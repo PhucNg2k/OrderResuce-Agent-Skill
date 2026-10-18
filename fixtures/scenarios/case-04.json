@@ -24,7 +24,11 @@
       "source": "disruption_feed",
       "observed_at": "2026-10-13T13:00:00+07:00",
       "text": "Cảnh báo mưa lớn, ngập cục bộ khu vực ZONE-B từ 13:00.",
-      "data": { "area": "ZONE-B", "status": "ACTIVE", "kind": "flooding" }
+      "data": {
+        "area": "ZONE-B",
+        "status": "ACTIVE",
+        "kind": "flooding"
+      }
     },
     {
       "id": "EV-04-NOTE",
@@ -39,7 +43,10 @@
       "source": "zone_monitor",
       "observed_at": "2026-10-13T14:10:00+07:00",
       "text": "12 đơn tại ZONE-B giao thất bại trong khung 13:00–15:00.",
-      "data": { "area": "ZONE-B", "failed_orders": 12 }
+      "data": {
+        "area": "ZONE-B",
+        "failed_orders": 12
+      }
     }
   ],
   "prepared_events": [
@@ -48,6 +55,7 @@
       "type": "DISRUPTION_RESOLVED",
       "occurred_at": "2026-10-13T19:00:00+07:00",
       "source": "disruption_simulator",
+      "label": "Cảnh báo ngập được gỡ",
       "payload": {
         "text": "Cảnh báo ngập ZONE-B đã được gỡ lúc 19:00.",
         "signal_id": "EV-04-SIG",

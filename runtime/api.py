@@ -5,11 +5,16 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from runtime.pipeline import PIPELINE, load_skill
 from runtime.simulator import Simulator
+
+UI_FILE = Path(__file__).parent / "static" / "index.html"
 
 app = FastAPI(title="Order Rescue prototype", description="Synthetic data · Demo policy · Simulated outcome")
 sim = Simulator(mode=os.getenv("ORDER_RESCUE_MODE", "REPLAY"))
@@ -29,13 +34,31 @@ class AdvanceBody(BaseModel):
 
 def run_view(run_id: str) -> dict:
     run = sim.runs[run_id]
+    to_evidence = load_skill("build-evidence").evidence_from_event
+    applied = {e.event_id for e in run.applied_events}
+    evidence = [e for e in run.case.evidence if e.observed_at <= run.now]
+    evidence += [ev for ev in map(to_evidence, run.applied_events) if ev]
     return {
         "run_id": run_id,
         "case_id": run.case.case_id,
+        "title": run.case.title,
+        "mode": sim.mode,
         "now": run.now,
+        "facts": run.facts,
+        "question": {"asked": run.questions_asked, "key": run.question_key,
+                     "deadline": run.question_deadline, "replied": run.replied_after_question},
+        "evidence": evidence,
+        "events": [{"event_id": e.event_id, "label": e.label or e.type, "type": e.type,
+                    "applied": e.event_id in applied} for e in run.case.prepared_events],
         "applied_events": [e.event_id for e in run.applied_events],
+        "pipeline": PIPELINE,
         "history": sim.history(run_id),
     }
+
+
+@app.get("/", response_class=HTMLResponse)
+def ui():
+    return UI_FILE.read_text(encoding="utf-8")
 
 
 @app.get("/cases")

@@ -17,3 +17,12 @@ def test_presenter_flow_over_http():
     assert [d["action"] for d in run["history"]] == ["CLARIFY", "STANDARD_RETRY"]
 
     assert client.post(f"/runs/{run['run_id']}/events", json={"event_id": "NOPE"}).status_code == 400
+
+
+def test_ui_page_and_run_view_for_the_ui():
+    client = TestClient(app)
+    assert "Order Rescue" in client.get("/").text
+    run = client.post("/runs", json={"case_id": "CASE-04"}).json()
+    assert {e["id"] for e in run["evidence"]} == {"EV-04-SIG", "EV-04-NOTE", "EV-04-CLUSTER"}
+    assert run["events"][0]["label"] == "Cảnh báo ngập được gỡ"
+    assert run["history"][0]["skills_run"][-1] == "audit-log"

@@ -54,9 +54,9 @@ skills/<name>/
 ## Commands
 
 ```bash
-uv run --python 3.12 --extra dev --extra api pytest -q        # 25 tests
+uv run --python 3.12 --extra dev --extra api pytest -q        # 26 tests
 uv run --python 3.12 python -m runtime.cli demo               # play all 5 cases (REPLAY)
-uv run --python 3.12 --extra api uvicorn runtime.api:app      # HTTP API for the demo UI
+uv run --python 3.12 --extra api uvicorn runtime.api:app      # UI + API at http://localhost:8000
 OPENAI_API_KEY=... uv run --python 3.12 --extra live python -m runtime.cli demo --mode LIVE_AI
 ```
 

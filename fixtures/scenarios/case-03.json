@@ -31,7 +31,13 @@
       "source": "address_check",
       "observed_at": "2026-10-13T09:45:00+07:00",
       "text": "Địa chỉ thiếu số nhà và tên hẻm.",
-      "data": { "complete": false, "missing": ["house_number", "alley"] }
+      "data": {
+        "complete": false,
+        "missing": [
+          "house_number",
+          "alley"
+        ]
+      }
     }
   ],
   "prepared_events": [
@@ -40,13 +46,17 @@
       "type": "BUYER_REPLY",
       "occurred_at": "2026-10-13T10:10:00+07:00",
       "source": "buyer_simulator",
-      "payload": { "text": "Hẻm nằm cạnh tiệm thuốc LANDMARK-A1, cổng sắt màu xanh." }
+      "label": "Người mua gửi mốc nhận biết",
+      "payload": {
+        "text": "Hẻm nằm cạnh tiệm thuốc LANDMARK-A1, cổng sắt màu xanh."
+      }
     },
     {
       "event_id": "C03-E03",
       "type": "ADDRESS_CHANGE_REQUEST",
       "occurred_at": "2026-10-13T10:12:00+07:00",
       "source": "buyer_simulator",
+      "label": "Người mua xin đổi địa chỉ",
       "payload": {
         "text": "Giao giúp mình tới địa chỉ mới LOC-TOKEN-B7.",
         "requested_action": "EDIT_ADDRESS"

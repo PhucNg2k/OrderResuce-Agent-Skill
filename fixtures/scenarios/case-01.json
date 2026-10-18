@@ -31,7 +31,11 @@
       "source": "buyer_history",
       "observed_at": "2026-10-13T14:00:00+07:00",
       "text": "4/4 đơn gần nhất nhận thành công, đều sau 18:00.",
-      "data": { "recent_orders": 4, "delivered": 4, "typical_window": "after_18" }
+      "data": {
+        "recent_orders": 4,
+        "delivered": 4,
+        "typical_window": "after_18"
+      }
     },
     {
       "id": "EV-01-ADDR",
@@ -39,7 +43,9 @@
       "source": "address_check",
       "observed_at": "2026-10-13T14:00:00+07:00",
       "text": "Địa chỉ có đủ số nhà và tên đường.",
-      "data": { "complete": true }
+      "data": {
+        "complete": true
+      }
     }
   ],
   "prepared_events": [
@@ -48,14 +54,20 @@
       "type": "BUYER_REPLY",
       "occurred_at": "2026-10-13T14:35:00+07:00",
       "source": "buyer_simulator",
-      "payload": { "text": "Mình vẫn muốn nhận, lúc đó mình đang đi làm." }
+      "label": "Người mua trả lời: vẫn muốn nhận",
+      "payload": {
+        "text": "Mình vẫn muốn nhận, lúc đó mình đang đi làm."
+      }
     },
     {
       "event_id": "C01-E03",
       "type": "RETURN_STARTED",
       "occurred_at": "2026-10-13T14:20:00+07:00",
       "source": "ops_simulator",
-      "payload": { "text": "Đơn chuyển sang trạng thái hoàn về (giả lập)." }
+      "label": "Đơn bắt đầu hoàn về",
+      "payload": {
+        "text": "Đơn chuyển sang trạng thái hoàn về (giả lập)."
+      }
     }
   ]
 }

@@ -33,7 +33,7 @@ class Simulator:
 
     def list_cases(self) -> list[dict]:
         cases = [CaseFile.model_validate(read_json(p)) for p in sorted((FIXTURES / "scenarios").glob("*.json"))]
-        return [{"case_id": c.case_id, "title": c.title,
+        return [{"case_id": c.case_id, "title": c.title, "failure_status": c.facts.failure_status,
                  "events": [{"event_id": e.event_id, "type": e.type} for e in c.prepared_events]} for c in cases]
 
     def start(self, case_id: str, case: Optional[CaseFile] = None) -> tuple[RunState, Decision]:
@@ -101,7 +101,10 @@ class Simulator:
             replay_key="+".join(["START"] + [e.event_id for e in run.applied_events]),
             replay_store=replay, requested_actions=requested or [],
         )
-        decision = run_pipeline(state).decision
+        final = run_pipeline(state)
+        decision = final.decision
+        decision.skills_run = final.trace
+        decision.validation_issues = final.validation_issues
         if decision.action == "CLARIFY":
             run.questions_asked += 1
             run.question_key = decision.question_key

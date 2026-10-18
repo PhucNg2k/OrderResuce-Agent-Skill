@@ -46,6 +46,7 @@ class Event(BaseModel):
     type: str
     occurred_at: datetime
     source: str = "presenter"
+    label: Optional[str] = None  # button text for the presenter, never sent to the model
     payload: dict[str, Any] = Field(default_factory=dict)
     synthetic: bool = True
 
@@ -143,6 +144,8 @@ class Decision(BaseModel):
     model_explanation: Optional[str] = None  # stored for audit, not shown on the card
     policy_version: str
     labels: list[str] = Field(default_factory=list)
+    skills_run: list[str] = Field(default_factory=list)
+    validation_issues: list[str] = Field(default_factory=list)
 
 
 class PipelineState(BaseModel):

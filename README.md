@@ -4,9 +4,26 @@ Prototype demo cho Order Rescue. Agent được viết theo dạng **agent skill
 
 > Dữ liệu giả lập · Luật minh họa · Kết quả mô phỏng. Không kết nối Shopee/SPX.
 
-## Chạy demo
+📄 Tài liệu kèm ảnh chụp màn hình: [docs/AGENT.md](docs/AGENT.md)
+
+## Chạy demo có giao diện
 
 Cần [uv](https://docs.astral.sh/uv/). Lệnh `uv` tự tải Python 3.12 và thư viện.
+
+```bash
+uv run --python 3.12 --extra api uvicorn runtime.api:app --port 8000
+```
+
+Mở **http://localhost:8000**:
+- Cột trái: chọn tình huống.
+- **Mô phỏng đầu vào:** bấm sự kiện (người mua trả lời, hết ngập…) hoặc tua đồng hồ ảo (+30 phút, +2 giờ 30, +1 ngày).
+- **Pipeline:** 7 bước của agent; ô đỏ là bước đã dừng case / chuyển người xử lý.
+- **Thẻ quyết định:** đề xuất, nguyên nhân, mức chắc chắn, câu hỏi, lý do bị chặn.
+- Cột phải: bằng chứng (viền xanh = AI dẫn ra) và lịch sử quyết định (bấm để xem lại).
+
+Link mở thẳng khi tập dượt: `http://localhost:8000/?case=CASE-03&apply=C03-E03`
+
+## Chạy demo trong terminal
 
 ```bash
 uv run --python 3.12 python -m runtime.cli demo           # chạy cả 5 tình huống
@@ -23,11 +40,7 @@ OPENAI_API_KEY=sk-... ORDER_RESCUE_RECORD=1 \
   uv run --python 3.12 --extra live python -m runtime.cli demo --mode LIVE_AI
 ```
 
-## Nối với UI
-
-```bash
-uv run --python 3.12 --extra api uvicorn runtime.api:app --reload
-```
+## API (nếu muốn nối UI khác)
 
 | Nút trên UI | API |
 |---|---|
@@ -57,5 +70,6 @@ fixtures/scenarios/       5 case giả lập
 fixtures/policies/        luật minh họa demo-v1
 fixtures/replay/          output AI đã lưu (REPLAY)
 fixtures/expected/        kết quả mong đợi (chỉ dùng cho test, không gửi cho model)
-tests/                    25 test
+runtime/static/index.html giao diện demo
+tests/                    26 test
 ```
