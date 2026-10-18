@@ -1,0 +1,61 @@
+{
+  "case_id": "CASE-01",
+  "title": "Người mua đi làm",
+  "synthetic": true,
+  "start_time": "2026-10-13T14:02:00+07:00",
+  "facts": {
+    "failure_status": "RECIPIENT_UNAVAILABLE",
+    "failed_at": "2026-10-13T14:00:00+07:00",
+    "attempts_used": 1,
+    "return_state": "NONE",
+    "delivered": false,
+    "deadline": "2026-10-16T23:59:00+07:00",
+    "service_area": "ZONE-A",
+    "payment": "COD",
+    "actor_role": "ops_agent",
+    "policy_version": "demo-v1",
+    "address_complete": true,
+    "buyer_contactable": true
+  },
+  "evidence": [
+    {
+      "id": "EV-01-NOTE",
+      "type": "COURIER_NOTE",
+      "source": "courier",
+      "observed_at": "2026-10-13T14:00:00+07:00",
+      "text": "Khách đi làm, không có ở nhà."
+    },
+    {
+      "id": "EV-01-HIST",
+      "type": "BUYER_HISTORY",
+      "source": "buyer_history",
+      "observed_at": "2026-10-13T14:00:00+07:00",
+      "text": "4/4 đơn gần nhất nhận thành công, đều sau 18:00.",
+      "data": { "recent_orders": 4, "delivered": 4, "typical_window": "after_18" }
+    },
+    {
+      "id": "EV-01-ADDR",
+      "type": "ADDRESS_CHECK",
+      "source": "address_check",
+      "observed_at": "2026-10-13T14:00:00+07:00",
+      "text": "Địa chỉ có đủ số nhà và tên đường.",
+      "data": { "complete": true }
+    }
+  ],
+  "prepared_events": [
+    {
+      "event_id": "C01-E02",
+      "type": "BUYER_REPLY",
+      "occurred_at": "2026-10-13T14:35:00+07:00",
+      "source": "buyer_simulator",
+      "payload": { "text": "Mình vẫn muốn nhận, lúc đó mình đang đi làm." }
+    },
+    {
+      "event_id": "C01-E03",
+      "type": "RETURN_STARTED",
+      "occurred_at": "2026-10-13T14:20:00+07:00",
+      "source": "ops_simulator",
+      "payload": { "text": "Đơn chuyển sang trạng thái hoàn về (giả lập)." }
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "case_id": "CASE-05",
+  "title": "Ghi 'từ chối' nhưng không có bằng chứng",
+  "synthetic": true,
+  "start_time": "2026-10-13T16:02:00+07:00",
+  "facts": {
+    "failure_status": "BUYER_REFUSED",
+    "failed_at": "2026-10-13T16:00:00+07:00",
+    "attempts_used": 1,
+    "return_state": "NONE",
+    "delivered": false,
+    "deadline": "2026-10-16T23:59:00+07:00",
+    "service_area": "ZONE-A",
+    "payment": "COD",
+    "actor_role": "ops_agent",
+    "policy_version": "demo-v1",
+    "address_complete": true,
+    "buyer_contactable": true
+  },
+  "evidence": [
+    {
+      "id": "EV-05-STATUS",
+      "type": "COURIER_STATUS",
+      "source": "courier",
+      "observed_at": "2026-10-13T16:00:00+07:00",
+      "text": "Trạng thái: Người mua từ chối nhận. Không có ghi chú, ảnh hay lịch sử cuộc gọi."
+    },
+    {
+      "id": "EV-05-HIST",
+      "type": "BUYER_HISTORY",
+      "source": "buyer_history",
+      "observed_at": "2026-10-13T16:00:00+07:00",
+      "text": "9/10 đơn gần nhất nhận thành công.",
+      "data": { "recent_orders": 10, "delivered": 9 }
+    }
+  ],
+  "prepared_events": [
+    {
+      "event_id": "C05-E02",
+      "type": "BUYER_REPLY",
+      "occurred_at": "2026-10-13T16:30:00+07:00",
+      "source": "buyer_simulator",
+      "payload": { "text": "Tôi không hề từ chối, hôm đó không ai gọi cho tôi." }
+    }
+  ]
+}

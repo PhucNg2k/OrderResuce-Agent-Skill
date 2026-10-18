@@ -1,0 +1,32 @@
+{
+  "case_id": "CASE-02",
+  "note": "Expected demo behavior. Never sent to the model.",
+  "scripts": [
+    {
+      "name": "Hết thời gian chờ",
+      "start": {
+        "action": "CLARIFY",
+        "status": "ALLOWED",
+        "confidence": "LOW",
+        "question_key": "CONFIRM_INTENT"
+      },
+      "steps": [
+        {
+          "advance_minutes": 60,
+          "expect": null
+        },
+        {
+          "advance_minutes": 90,
+          "expect": {
+            "action": "HUMAN_REVIEW",
+            "status": "ESCALATED",
+            "cause": "UNKNOWN",
+            "reasons": [
+              "no_reply_after_question"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

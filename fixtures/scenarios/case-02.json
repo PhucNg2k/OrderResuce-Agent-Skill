@@ -1,0 +1,38 @@
+{
+  "case_id": "CASE-02",
+  "title": "Không trả lời",
+  "synthetic": true,
+  "start_time": "2026-10-13T10:32:00+07:00",
+  "facts": {
+    "failure_status": "RECIPIENT_UNAVAILABLE",
+    "failed_at": "2026-10-13T10:30:00+07:00",
+    "attempts_used": 1,
+    "return_state": "NONE",
+    "delivered": false,
+    "deadline": "2026-10-16T23:59:00+07:00",
+    "service_area": "ZONE-C",
+    "payment": "COD",
+    "actor_role": "ops_agent",
+    "policy_version": "demo-v1",
+    "address_complete": true,
+    "buyer_contactable": true
+  },
+  "evidence": [
+    {
+      "id": "EV-02-NOTE",
+      "type": "COURIER_NOTE",
+      "source": "courier",
+      "observed_at": "2026-10-13T10:30:00+07:00",
+      "text": "Gọi 2 lần không nghe máy."
+    },
+    {
+      "id": "EV-02-ADDR",
+      "type": "ADDRESS_CHECK",
+      "source": "address_check",
+      "observed_at": "2026-10-13T10:30:00+07:00",
+      "text": "Địa chỉ có đủ số nhà và tên đường.",
+      "data": { "complete": true }
+    }
+  ],
+  "prepared_events": []
+}

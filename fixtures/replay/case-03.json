@@ -1,0 +1,99 @@
+{
+  "START": {
+    "source": "hand_authored_seed",
+    "model": null,
+    "prompt_version": "assess-v1",
+    "policy_version": "demo-v1",
+    "note": "Hand-written seed, NOT a real model output. Replace by running LIVE_AI with ORDER_RESCUE_RECORD=1.",
+    "output": {
+      "cause": "UNCLEAR_LOCATION",
+      "supporting_evidence_ids": [
+        "EV-03-NOTE",
+        "EV-03-ADDR"
+      ],
+      "conflicting_evidence_ids": [],
+      "confidence": "MEDIUM",
+      "rescue_potential": "MEDIUM",
+      "missing_information": [
+        "Mốc nhận biết hoặc chỉ dẫn đường"
+      ],
+      "question_key": "CLARIFY_LANDMARK",
+      "proposed_action": "CLARIFY",
+      "claims": [
+        {
+          "text": "Shipper không tìm thấy hẻm",
+          "evidence_id": "EV-03-NOTE",
+          "quote": "Không tìm thấy hẻm"
+        },
+        {
+          "text": "Địa chỉ thiếu số nhà và tên hẻm",
+          "evidence_id": "EV-03-ADDR",
+          "quote": "thiếu số nhà và tên hẻm"
+        }
+      ],
+      "explanation": "Địa chỉ thiếu thông tin và shipper không tìm được vị trí. Cần mốc nhận biết từ người mua."
+    }
+  },
+  "START+C03-E02": {
+    "source": "hand_authored_seed",
+    "model": null,
+    "prompt_version": "assess-v1",
+    "policy_version": "demo-v1",
+    "note": "Hand-written seed, NOT a real model output. Replace by running LIVE_AI with ORDER_RESCUE_RECORD=1.",
+    "output": {
+      "cause": "UNCLEAR_LOCATION",
+      "supporting_evidence_ids": [
+        "EV-03-NOTE",
+        "EV-03-ADDR",
+        "EV-C03-E02"
+      ],
+      "conflicting_evidence_ids": [],
+      "confidence": "MEDIUM",
+      "rescue_potential": "MEDIUM",
+      "missing_information": [
+        "Đội vận hành xác minh mốc nhận biết"
+      ],
+      "question_key": null,
+      "proposed_action": "HUMAN_REVIEW",
+      "claims": [
+        {
+          "text": "Người mua mô tả mốc nhận biết gần nhà",
+          "evidence_id": "EV-C03-E02",
+          "quote": "cạnh tiệm thuốc LANDMARK-A1"
+        }
+      ],
+      "explanation": "Người mua đã cung cấp mốc nhận biết. Thông tin cần được đội vận hành xác minh trước khi xử lý tiếp."
+    }
+  },
+  "START+C03-E03": {
+    "source": "hand_authored_seed",
+    "model": null,
+    "prompt_version": "assess-v1",
+    "policy_version": "demo-v1",
+    "note": "Hand-written seed, NOT a real model output. Replace by running LIVE_AI with ORDER_RESCUE_RECORD=1.",
+    "output": {
+      "cause": "UNCLEAR_LOCATION",
+      "supporting_evidence_ids": [
+        "EV-03-NOTE",
+        "EV-03-ADDR",
+        "EV-C03-E03"
+      ],
+      "conflicting_evidence_ids": [],
+      "confidence": "MEDIUM",
+      "rescue_potential": "MEDIUM",
+      "missing_information": [
+        "Yêu cầu đổi địa chỉ cần người có thẩm quyền xử lý"
+      ],
+      "question_key": null,
+      "proposed_action": "HUMAN_REVIEW",
+      "claims": [
+        {
+          "text": "Người mua yêu cầu giao tới địa chỉ khác",
+          "evidence_id": "EV-C03-E03",
+          "quote": "địa chỉ mới LOC-TOKEN-B7"
+        }
+      ],
+      "explanation": "Người mua gửi yêu cầu đổi địa chỉ. Việc này cần người có thẩm quyền xử lý."
+    }
+  }
+}

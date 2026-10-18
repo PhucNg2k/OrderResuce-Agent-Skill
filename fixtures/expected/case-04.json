@@ -1,0 +1,25 @@
+{
+  "case_id": "CASE-04",
+  "note": "Expected demo behavior. Never sent to the model.",
+  "scripts": [
+    {
+      "name": "Tạm giữ rồi đánh giá lại",
+      "start": {
+        "action": "HOLD",
+        "status": "ALLOWED",
+        "confidence": "HIGH",
+        "cause": "DISRUPTION"
+      },
+      "steps": [
+        {
+          "apply": "C04-E02",
+          "expect": {
+            "action": "STANDARD_RETRY",
+            "status": "ALLOWED",
+            "confidence": "HIGH"
+          }
+        }
+      ]
+    }
+  ]
+}

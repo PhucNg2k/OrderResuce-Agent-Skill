@@ -1,0 +1,58 @@
+{
+  "case_id": "CASE-04",
+  "title": "Mưa ngập khu vực",
+  "synthetic": true,
+  "start_time": "2026-10-13T14:12:00+07:00",
+  "facts": {
+    "failure_status": "RECIPIENT_UNAVAILABLE",
+    "failed_at": "2026-10-13T14:10:00+07:00",
+    "attempts_used": 1,
+    "return_state": "NONE",
+    "delivered": false,
+    "deadline": "2026-10-16T23:59:00+07:00",
+    "service_area": "ZONE-B",
+    "payment": "COD",
+    "actor_role": "ops_agent",
+    "policy_version": "demo-v1",
+    "address_complete": true,
+    "buyer_contactable": true
+  },
+  "evidence": [
+    {
+      "id": "EV-04-SIG",
+      "type": "DISRUPTION_SIGNAL",
+      "source": "disruption_feed",
+      "observed_at": "2026-10-13T13:00:00+07:00",
+      "text": "Cảnh báo mưa lớn, ngập cục bộ khu vực ZONE-B từ 13:00.",
+      "data": { "area": "ZONE-B", "status": "ACTIVE", "kind": "flooding" }
+    },
+    {
+      "id": "EV-04-NOTE",
+      "type": "COURIER_NOTE",
+      "source": "courier",
+      "observed_at": "2026-10-13T14:10:00+07:00",
+      "text": "Đường ngập, không vào được hẻm."
+    },
+    {
+      "id": "EV-04-CLUSTER",
+      "type": "ZONE_FAILURE_CLUSTER",
+      "source": "zone_monitor",
+      "observed_at": "2026-10-13T14:10:00+07:00",
+      "text": "12 đơn tại ZONE-B giao thất bại trong khung 13:00–15:00.",
+      "data": { "area": "ZONE-B", "failed_orders": 12 }
+    }
+  ],
+  "prepared_events": [
+    {
+      "event_id": "C04-E02",
+      "type": "DISRUPTION_RESOLVED",
+      "occurred_at": "2026-10-13T19:00:00+07:00",
+      "source": "disruption_simulator",
+      "payload": {
+        "text": "Cảnh báo ngập ZONE-B đã được gỡ lúc 19:00.",
+        "signal_id": "EV-04-SIG",
+        "status": "RESOLVED"
+      }
+    }
+  ]
+}

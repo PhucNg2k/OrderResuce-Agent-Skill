@@ -1,0 +1,54 @@
+{
+  "case_id": "CASE-01",
+  "note": "Expected demo behavior. Never sent to the model.",
+  "scripts": [
+    {
+      "name": "Trả lời làm đổi đề xuất",
+      "start": {
+        "action": "CLARIFY",
+        "status": "ALLOWED",
+        "confidence": "MEDIUM",
+        "question_key": "CONFIRM_INTENT"
+      },
+      "steps": [
+        {
+          "apply": "C01-E02",
+          "expect": {
+            "action": "STANDARD_RETRY",
+            "status": "ALLOWED",
+            "confidence": "HIGH"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Trả lời muộn sau khi đã hoàn hàng",
+      "start": {
+        "action": "CLARIFY",
+        "status": "ALLOWED"
+      },
+      "steps": [
+        {
+          "apply": "C01-E03",
+          "expect": {
+            "action": "HUMAN_REVIEW",
+            "status": "ESCALATED",
+            "reasons": [
+              "return_in_progress"
+            ]
+          }
+        },
+        {
+          "apply": "C01-E02",
+          "expect": {
+            "action": "HUMAN_REVIEW",
+            "status": "ESCALATED",
+            "reasons": [
+              "return_in_progress"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

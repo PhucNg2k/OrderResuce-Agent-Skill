@@ -1,0 +1,41 @@
+{
+  "policy_version": "demo-v1",
+  "synthetic": true,
+  "note": "Team's example rules for the prototype. Not SPX/Shopee policy.",
+  "max_attempts": 3,
+  "response_window_minutes": 120,
+  "max_buyer_questions": 1,
+  "hold_reassess_minutes": 180,
+  "allowed_actions": ["CLARIFY", "STANDARD_RETRY", "HOLD", "HUMAN_REVIEW", "NO_ACTION"],
+  "always_blocked": [
+    "SEND_REAL_MESSAGE",
+    "CALL_CARRIER_API",
+    "EDIT_ADDRESS",
+    "PROMISE_DELIVERY_TIME",
+    "DISPATCH_COURIER",
+    "AUTO_RETURN",
+    "AUTO_REFUND",
+    "AUTO_CANCEL",
+    "PENALIZE_BUYER"
+  ],
+  "retry_allowed_causes": ["TEMPORARY_ABSENCE", "DISRUPTION"],
+  "confirmation_required": {
+    "TEMPORARY_ABSENCE": ["BUYER_REPLY"],
+    "UNCLEAR_LOCATION": ["BUYER_REPLY"],
+    "DISRUPTION": ["DISRUPTION_SIGNAL"]
+  },
+  "question_templates": {
+    "CONFIRM_INTENT": "Đơn hàng của bạn chưa giao được hôm nay. Bạn còn muốn nhận đơn này không?",
+    "CLARIFY_LANDMARK": "Shipper chưa tìm được địa chỉ. Bạn có thể mô tả thêm mốc nhận biết gần nhà không?"
+  },
+  "prohibited_patterns": [
+    "bom hàng",
+    "lỗi (của|do) (khách|người mua)",
+    "(cam kết|đảm bảo|hứa) giao",
+    "giao (lúc|vào lúc|trước) \\d",
+    "hoàn (hàng|tiền) ngay",
+    "buyer'?s? fault",
+    "guarantee[ds]? delivery",
+    "deliver(ed)? (at|by) \\d"
+  ]
+}

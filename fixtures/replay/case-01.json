@@ -1,0 +1,71 @@
+{
+  "START": {
+    "source": "hand_authored_seed",
+    "model": null,
+    "prompt_version": "assess-v1",
+    "policy_version": "demo-v1",
+    "note": "Hand-written seed, NOT a real model output. Replace by running LIVE_AI with ORDER_RESCUE_RECORD=1.",
+    "output": {
+      "cause": "TEMPORARY_ABSENCE",
+      "supporting_evidence_ids": [
+        "EV-01-NOTE",
+        "EV-01-HIST"
+      ],
+      "conflicting_evidence_ids": [],
+      "confidence": "MEDIUM",
+      "rescue_potential": "MEDIUM",
+      "missing_information": [
+        "Người mua còn muốn nhận hàng không"
+      ],
+      "question_key": "CONFIRM_INTENT",
+      "proposed_action": "CLARIFY",
+      "claims": [
+        {
+          "text": "Shipper ghi người mua đang đi làm",
+          "evidence_id": "EV-01-NOTE",
+          "quote": "Khách đi làm"
+        },
+        {
+          "text": "Người mua thường nhận hàng sau 18:00",
+          "evidence_id": "EV-01-HIST",
+          "quote": "đều sau 18:00"
+        }
+      ],
+      "explanation": "Có dấu hiệu người mua vắng mặt tạm thời do đi làm. Chưa có xác nhận người mua còn muốn nhận hàng."
+    }
+  },
+  "START+C01-E02": {
+    "source": "hand_authored_seed",
+    "model": null,
+    "prompt_version": "assess-v1",
+    "policy_version": "demo-v1",
+    "note": "Hand-written seed, NOT a real model output. Replace by running LIVE_AI with ORDER_RESCUE_RECORD=1.",
+    "output": {
+      "cause": "TEMPORARY_ABSENCE",
+      "supporting_evidence_ids": [
+        "EV-01-NOTE",
+        "EV-01-HIST",
+        "EV-C01-E02"
+      ],
+      "conflicting_evidence_ids": [],
+      "confidence": "HIGH",
+      "rescue_potential": "HIGH",
+      "missing_information": [],
+      "question_key": null,
+      "proposed_action": "STANDARD_RETRY",
+      "claims": [
+        {
+          "text": "Người mua xác nhận vẫn muốn nhận",
+          "evidence_id": "EV-C01-E02",
+          "quote": "Mình vẫn muốn nhận"
+        },
+        {
+          "text": "Shipper ghi người mua đang đi làm",
+          "evidence_id": "EV-01-NOTE",
+          "quote": "Khách đi làm"
+        }
+      ],
+      "explanation": "Người mua xác nhận vẫn muốn nhận và lý do vắng mặt khớp với ghi chú của shipper."
+    }
+  }
+}
