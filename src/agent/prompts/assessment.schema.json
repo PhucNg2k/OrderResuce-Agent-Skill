@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "order-rescue/assessment.schema.json",
+  "title": "Order Rescue Assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["evidence", "hypothesis", "confidence", "missing_info", "question_key", "candidate_action"],
+  "properties": {
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_ref", "fact", "verification"],
+        "properties": {
+          "source_ref": { "type": "string", "minLength": 1 },
+          "fact": { "type": "string", "minLength": 1 },
+          "verification": {
+            "type": "string",
+            "enum": ["SOURCE_RECORD", "UNVERIFIED_REPORT", "DIRECT_BUYER_STATEMENT", "VERIFIED_OPS_SIGNAL"]
+          }
+        }
+      }
+    },
+    "hypothesis": {
+      "type": "string",
+      "enum": ["AVAILABILITY_ISSUE", "ADDRESS_ISSUE", "CONTACT_ISSUE", "BUYER_INTENT_ISSUE", "PAYMENT_ISSUE", "LOGISTICS_ISSUE", "UNKNOWN_CAUSE"]
+    },
+    "confidence": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+    "missing_info": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["CURRENT_BUYER_INTENT", "RECEIVING_AVAILABILITY", "ADDRESS_CLARIFICATION", "CONTACT_CLARIFICATION", "COD_READINESS", "DELIVERY_ACCESS", "LOGISTICS_VERIFICATION", "CAUSE_CLARIFICATION"]
+      }
+    },
+    "question_key": { "type": ["string", "null"], "enum": ["CONFIRM_INTENT", "CLARIFY_LANDMARK", null] },
+    "candidate_action": {
+      "type": "string",
+      "enum": ["CLARIFY", "STANDARD_REATTEMPT", "HOLD_DISRUPTION", "ESCALATE_REVIEW", "NO_ACTION"]
+    }
+  }
+}
