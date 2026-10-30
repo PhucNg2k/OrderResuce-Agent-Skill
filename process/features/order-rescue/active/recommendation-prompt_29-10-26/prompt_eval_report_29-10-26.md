@@ -134,3 +134,22 @@ Câu hỏi chung: quy tắc CAUSE_CLARIFICATION bị golden áp dụng không đ
 1. Chờ Hải trả lời mục 5, rồi chấm lại với golden đã chốt.
 2. Sửa prompt cho các prompt_gap còn lại: ghi chú cụ thể chưa xác minh là MEDIUM; CAUSE_CLARIFICATION khi dựa vào trạng thái trơ hoặc LOW; ops verified là VERIFIED_OPS_SIGNAL và HIGH; báo cáo shipper về logistics tính là hypothesis.
 3. Viết 10 ca mới, không dùng để vá, làm tập kiểm độc lập; chạy lặp nhiều lần để ước lượng phương sai.
+
+## 8. Chạy lại v3 sau khi Hải trả lời (29-10-26)
+
+Thay đổi so với v2: định nghĩa `CONTACT_CLARIFICATION` (lỗi đường truyền) và rule D9 (PREPAID chỉ nâng confidence). Nhãn DEMO-020 lượt đầu đổi sang UNKNOWN_CAUSE theo Hải. Nhãn còn lại vẫn là nháp.
+
+Khác phương pháp mục 1: 10 agent, mỗi agent chạy 3 ca và coi mỗi giai đoạn là độc lập (không phải mỗi ca một agent). Chấm bằng script, so khớp chính xác 5 trường (hypothesis, confidence, action, question_key, missing_info; bỏ evidence). Vì vậy số liệu **không so trực tiếp** được với bảng v1/v2.
+
+| Trường | Initial (n=30) | After_reply (n=24) |
+|---|---|---|
+| hypothesis | 28 | 24 |
+| confidence | 24 | 22 |
+| action | 30 | 24 |
+| question_key | 30 | 24 |
+| missing_info | 25 | 24 |
+| cả 5 trường | 20 | 22 |
+
+Lệch còn lại (initial): confidence ở DEMO-004, 007, 008, 009, 016, 024; missing_info thiếu CAUSE_CLARIFICATION ở 002, 007, 015, 016 và thiếu COD_READINESS ở 020; hypothesis ở 024 và 027 (model ra UNKNOWN_CAUSE, nhãn là LOGISTICS_ISSUE). Sau reply lệch ở DEMO-004 và 009 (confidence).
+
+Nhận xét: D9 chưa giúp DEMO-024 vì rule D1 (note chung chung) vẫn thắng. Muốn đạt nhãn của Hải thì cần ngoại lệ D1 rõ ràng cho 024. Kết quả chỉ là mô phỏng LLM.

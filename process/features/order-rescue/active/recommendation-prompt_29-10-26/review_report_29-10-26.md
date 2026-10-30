@@ -194,3 +194,35 @@ Lưu ý: hầu hết "bác" nghĩa là reviewer thứ hai tìm thấy PDF ghi đ
 
 - Số đếm usage lấy từ reviewer, đã được voter đối chiếu với JSON golden. Một số voter ghi rõ chưa tự đếm lại cột "final" cho vài enum.
 - File test case là golden để kiểm tra, không nên đưa vào prompt Agent (dùng bản paraphrase làm few-shot).
+
+
+## 6. Hải trả lời (29-10-26) và tác động lên prompt
+
+| Câu hỏi | Hải trả lời | Xử lý |
+|---|---|---|
+| 024 vs 027 | 024 là PREPAID, lý do không giao là đường đông, buyer chưa kịp nhận. 027 là COD (dễ bom hàng hơn). Hai kịch bản giống nhau nhưng khác trạng thái thanh toán, và note của 024 ghi rõ hơn. | Giữ nhãn khác nhau có chủ đích (024 MEDIUM, 027 LOW). **Xung đột với rule D1** trong prompt (note chung chung cùng xử lý như nhau). Cần quyết: thêm rule "note có nêu buyer chưa kịp nhận + PREPAID" hay bỏ D1 cho 024. Chưa sửa prompt. |
+| 023/026 HOLD vs CLARIFY | Đúng, không reply thì HOLD. Thời gian hold theo policy Shopee Express. Hai case chỉ để demo chuyển trạng thái khi buyer không reply bằng nút trên UI. | Khớp row 1 của bảng action. HOLD kết thúc do Ops/policy, không do prompt. Không đổi prompt. |
+| 030 (emoji) | ESCALATE_REVIEW. | Khớp row 5 (reply không thông tin). Không đổi prompt. |
+| 020 | Đang là giả định PAYMENT_ISSUE. Sau reply sẽ đánh giá lại, nếu không có thì HOLD để escalated review. | Ghi nhận là giả định. Prompt hiện cho UNKNOWN_CAUSE, nên 020 vẫn lệch nhãn; cần Hải/Kha xác nhận có đổi nhãn sang UNKNOWN_CAUSE hay thêm rule. |
+| CONTACT vs CAUSE | CONTACT là lỗi đường truyền: bắt máy nhưng không nghe rõ, không có mạng, tắt giữa chừng. Không liên lạc được trong điều kiện tốt thì là CAUSE. | Đã cập nhật định nghĩa CONTACT_CLARIFICATION trong prompt. |
+
+Chưa trả lời: câu 6 đến 9 (as_of, nhánh ngoài suite, question_key null, DELIVERY_ACCESS), và 7 câu còn lại của mục 4.
+
+### 6.1 Vòng trả lời thứ hai của Hải (29-10-26)
+
+| # | Câu hỏi | Hải trả lời | Xử lý |
+|---|---|---|---|
+| 1 | 024 vs 027 | PREPAID là đã trả trước nên khả năng nhận hàng cao hơn, vì vậy hypothesis có confidence cao hơn. | Đã thêm rule D9 (payment type chỉ ảnh hưởng confidence). |
+| 2 | DEMO-020 lượt đầu | PAYMENT_ISSUE chỉ là giả định, để UNKNOWN_CAUSE cũng được. | Đổi nhãn 020 lượt đầu sang UNKNOWN_CAUSE, khớp prompt. Cần Hải/Kha sửa file nhãn. |
+| 3 | Hết hạn HOLD ở 023/026 | ESCALATE_REVIEW | Ghi nhận, nằm ngoài prompt (do Ops/backend). |
+| 4 | 030: missing_info và confidence giữ nguyên | Đúng | Khớp row 5. |
+| 5 | as_of ở lượt 2 | Đúng | Backend đặt as_of bằng thời điểm reply. |
+| 6 | Case ngoài 30 | Không, phần đó chỉ để giám khảo biết (aware). | Không thêm case. |
+| 7 | question_key null cho 025 | Hải chưa hiểu câu hỏi. | Chưa xác nhận, giữ mặc định null. |
+| 8 | DELIVERY_ACCESS | Giữ enum. Khác ADDRESS_CLARIFICATION: ADDRESS là thiếu thông tin địa chỉ, DELIVERY_ACCESS là đủ thông tin nhưng shipper không biết đi. Khi missing_info là DELIVERY_ACCESS thì khả năng giao lại cao, không phải lỗi buyer. Trong hội thoại Hải cũng nói gộp hoặc bỏ cũng được. | Giữ enum. Thêm 1 case là việc của Hải nếu muốn. |
+
+### 6.2 Họp nhóm 29-10-26: kết luận về 024/027 và 020
+
+- **024 và 027:** Hải xác nhận cả hai note đều mơ hồ, khác nhau ở thanh toán (024 trả trước nên MEDIUM, 027 COD nên LOW). Lucas phản biện theo kinh nghiệm vận hành: shipper không tự hoàn đơn vì đường đông, hệ thống tự cập nhật thời gian dự kiến; chỉ khi có tác động từ phía buyer mới hoàn. Hai bên đồng ý nên bỏ nhóm case logistics mơ hồ này, giữ các case về payment và buyer. Chưa xóa khỏi file nhãn; việc đó thuộc Hải. Prompt không thêm ngoại lệ D1.
+- **020:** Hải xác nhận PAYMENT_ISSUE chỉ là giả định, UNKNOWN_CAUSE chấp nhận được. Lucas đồng ý.
+- **Dữ liệu 30 case:** giữ nguyên file hiện có, không tạo lại. Hải rà lại business rule và 30 case rồi gửi Kha.

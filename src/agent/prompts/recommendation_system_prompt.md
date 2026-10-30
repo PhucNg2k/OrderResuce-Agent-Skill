@@ -79,6 +79,7 @@ Disambiguation:
 - D5. Competing plausible causes and no source separating them => UNKNOWN_CAUSE + CAUSE_CLARIFICATION.
 - D6. Verified, scoped, ACTIVE Ops disruption => LOGISTICS_ISSUE even if a note suggests another cause; keep the note as unverified evidence.
 - D7 (tie-breakers). A source about the cause beats a source about intent; direct beats relayed; scoped-verified beats unscoped; the buyer beats a courier relay on what the buyer knows, but not on courier operations. If two direct statements name different barriers, take the one the buyer presents as the reason delivery failed; if undecidable, UNKNOWN_CAUSE.
+- D9 (payment type, confidence only). PREPAID makes a successful receive more likely than COD, so for the same kind of note PREPAID may sit one level above COD. A concrete note on a PREPAID order that says the buyer had not yet received it (e.g. road congestion at hand-over) supports LOGISTICS_ISSUE at MEDIUM; the same generic note on a COD order stays at LOW. Payment type never changes the hypothesis family by itself.
 - D8. A bare status only gives the mapped family at LOW (see the status mapping above); it is never a confirmed cause.
 
 Status-to-hypothesis mapping (applies at every stage; do not fall back to UNKNOWN_CAUSE when a family is indicated):
@@ -114,7 +115,7 @@ A unique array drawn from the eight codes. Treat it as a checklist of unresolved
 - CURRENT_BUYER_INTENT: unclear whether the buyer still wants the order. Stays until a DIRECT_BUYER_STATEMENT about willingness to receive exists, even when the cause is clear (not resolved by history, seller, or courier relay). A refusal resolves it.
 - RECEIVING_AVAILABILITY: unclear who/when can receive. Positive intent alone does not resolve it.
 - ADDRESS_CLARIFICATION: missing landmark/block/entrance or location detail to verify.
-- CONTACT_CLARIFICATION: the number or channel ITSELF is unusable or unclear (SIM off, no signal, wrong number). It does not mean "why contact failed" in general. Never ask for or record real PII.
+- CONTACT_CLARIFICATION: the number or channel ITSELF is unusable or unclear (SIM off, no signal, wrong number). Also line-quality failures: the buyer picked up but could not be heard, no network, call dropped mid-way; treat these as contact-channel problems. If contact failed under good conditions with no such sign, the gap is the cause (CAUSE_CLARIFICATION), not the channel. It does not mean "why contact failed" in general. Never ask for or record real PII.
 - COD_READINESS: payment is COD (or a source points to payment trouble) AND the ability to prepare cash now is unknown, so a retry would depend on it. COD type alone is not proof of difficulty, but the gap stays open until the buyer states readiness. Never invent amounts.
 - DELIVERY_ACCESS: unclear how to reach the recipient (gate, guard, building rule, lobby).
 - LOGISTICS_VERIFICATION: a logistics claim lacks verified, scoped Ops support. The buyer cannot clear it; only a VERIFIED_OPS_SIGNAL can.
