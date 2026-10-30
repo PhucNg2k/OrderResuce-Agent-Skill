@@ -1,0 +1,10 @@
+import { z } from 'zod';
+export const hypotheses=['AVAILABILITY_ISSUE','ADDRESS_ISSUE','CONTACT_ISSUE','BUYER_INTENT_ISSUE','PAYMENT_ISSUE','LOGISTICS_ISSUE','UNKNOWN_CAUSE'] as const;
+export const missingInfo=['CURRENT_BUYER_INTENT','RECEIVING_AVAILABILITY','ADDRESS_CLARIFICATION','CONTACT_CLARIFICATION','COD_READINESS','DELIVERY_ACCESS','LOGISTICS_VERIFICATION','CAUSE_CLARIFICATION'] as const;
+export const questionKeys=['CONFIRM_INTENT','CLARIFY_LANDMARK'] as const;
+export const candidates=['CLARIFY','STANDARD_REATTEMPT','HOLD_DISRUPTION','ESCALATE_REVIEW','NO_ACTION'] as const;
+export const assessmentSchema=z.object({evidence:z.array(z.object({source_ref:z.string(),fact:z.string(),verification:z.enum(['SOURCE_RECORD','UNVERIFIED_REPORT','DIRECT_BUYER_STATEMENT','VERIFIED_OPS_SIGNAL'])}).strict()).min(1),hypothesis:z.enum(hypotheses),confidence:z.enum(['LOW','MEDIUM','HIGH']),missing_info:z.array(z.enum(missingInfo)),question_key:z.enum(questionKeys).nullable(),candidate_action:z.enum(candidates)}).strict();
+export type Assessment=z.infer<typeof assessmentSchema>;
+export const policySchema=z.object({eligibility:z.enum(['ELIGIBLE','INELIGIBLE','UNKNOWN']),policy_gate:z.enum(['PERMITTED','BLOCKED','ESCALATED']),final_action:z.string(),reason:z.string()}).strict();
+export type Policy=z.infer<typeof policySchema>;
+export type CaseInput={case_id:string;failed_event:{status:string;time:string;courier_note:string|null;reported_reason:string|null;as_of:string};attempts_used:number;return_state:'NOT_STARTED'|'STARTED'|'COMPLETED'|'UNKNOWN';deadline:string|null;buyer_history:unknown[];operational_context:{route:string|null;payment:'COD'|'PREPAID'|'UNKNOWN';policy_version:string;buyer_messages_t0:{source_ref:string;text:string}[];ops:unknown|null};runtime_context:{source_ref:string;text:string}[];sources:Record<string,{text:string;verification:string;owner_case?:string;available_phase?:string}>};

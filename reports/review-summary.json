@@ -1,0 +1,34 @@
+{
+  "commit": "e52194f4af805c6d41d283c2fb19c3f1aed8c69c",
+  "dirty_worktree": true,
+  "dependency_versions": {"node":"25.1.0","npm":"11.6.2","@voltagent/core":"2.11.0","ai":"6.0.317","@ai-sdk/deepseek":"1.0.0","better-sqlite3":"12.11.1","hono":"4.13.14","zod":"4.6.7","typescript":"5.9.3","tsx":"4.23.15"},
+  "requested_model": "deepseek-chat (default; DEEPSEEK_MODEL override supported)",
+  "response_model_if_available": null,
+  "structured_output_strategy": "Prompt requests one JSON object; result.text is parsed with JSON.parse and validated by Zod. No provider-native structured output.",
+  "llm_call_sites": [{"file":"volt-app/src/agent.ts","line":9,"function":"assess","api":"ai.generateText","purpose":"assessment, internal decision_facts, and optional question in one request"}],
+  "tests": [
+    {"command":"npm run typecheck","result":"PASS","evidence":"tsc --noEmit exit 0"},
+    {"command":"npm test","result":"PASS","evidence":"1 test passed; schema shape only"},
+    {"command":"npm run build","result":"PASS","evidence":"tsc exit 0"},
+    {"command":"temporary venv: python -m pytest -q","result":"PASS","evidence":"26 passed, 1 deprecation warning"},
+    {"command":"isolated DB harness test-double checks","result":"PASS_WITH_FINDINGS","evidence":"reply/no-reply/final copy/wrong question/restart passed; semantic provenance, lifecycle, idempotency, and snapshot gaps reproduced"},
+    {"command":"isolated HTTP GET / and /api/cases","result":"PASS","evidence":"HTTP 200"},
+    {"command":"isolated HTTP POST /api/runs","result":"BLOCKED","evidence":"HTTP 400 LIVE_BLOCKED: DEEPSEEK_API_KEY unavailable"},
+    {"command":"browser E2E","result":"NOT_TESTED","evidence":"no browser E2E suite/tooling present"},
+    {"command":"original 30-case BI evaluation","result":"BLOCKED","evidence":"required data-model and test-case JSON files absent"}
+  ],
+  "findings": [
+    {"severity":"HIGH","file":"volt-app/src/harness.ts","line":5,"description":"Policy permits retry from unvalidated model-generated decision_facts."},
+    {"severity":"HIGH","file":"volt-app/src/harness.ts","line":8,"description":"Source validation checks ID existence only; invented verification and unsupported facts pass."},
+    {"severity":"HIGH","file":"volt-app/src/harness.ts","line":8,"description":"Lifecycle-blocked cases are not consistently prechecked, finalized, or persisted."},
+    {"severity":"MEDIUM","file":"volt-app/src/harness.ts","line":9,"description":"Event IDs lack uniqueness and payload hashes; duplicates are conflicts rather than idempotent replays."},
+    {"severity":"MEDIUM","file":"volt-app/src/harness.ts","line":2,"description":"No immutable phase-two input snapshot is persisted."},
+    {"severity":"MEDIUM","file":"volt-app/src/agent.ts","line":9,"description":"Model/parse/source failures are returned as HTTP errors rather than durable review outcomes."},
+    {"severity":"LOW","file":"volt-app/src/agent.ts","line":8,"description":"VoltAgent Agent is instantiated but not invoked; execution uses AI SDK directly."}
+  ],
+  "bi_workflow_checks": {"initial_saved_before_question":"PASS","at_most_one_question":"PASS","matching_question_id":"PASS","complete_after_reply":"PASS","no_reply_no_assessment":"PASS","no_reply_after_objects_null":"PASS","final_exact_copy":"PASS","final_not_third_assessment":"PASS","final_source_and_completed":"FAIL_FOR_NON_QUESTION_OUTCOMES","duplicate_cannot_finalize_twice":"PASS","duplicate_idempotency_and_payload_conflict":"FAIL","no_automatic_timeout":"PASS","historical_snapshot_per_assessment":"FAIL","original_30_case_evaluation":"BLOCKED"},
+  "semantic_hardcoding_findings": {"semantic_regex_or_keywords":false,"case_or_fixture_label_inference":false,"expected_answer_leakage":false,"legitimate_constraints":["COD payment check","source ID lookup","HTML escaping"],"material_risk":"Semantic correctness and retry prerequisites depend on unvalidated LLM extraction; source existence is incorrectly treated as sufficient validation."},
+  "live_request_count": 0,
+  "blockers": ["DEEPSEEK_API_KEY unavailable", "Order_Rescue_Data_Model_30_Cases_v2.2.json missing", "Order_Rescue_Test_Cases_30_v2.2.json missing", "Order_Rescue_Minimal_Simulation_30_Cases_v2.1.xlsx referenced but missing", "No browser E2E suite/tooling"],
+  "recommended_next_steps": ["Add provenance-bound semantic validation before deterministic policy", "Finalize and persist all lifecycle prechecks without LLM calls", "Add transactional event idempotency and payload hashes", "Persist an input snapshot per assessment", "Persist model failures as review outcomes", "Obtain authoritative BI JSON artifacts and run the untouched 30-case suite", "Add API/browser tests and then run bounded live semantic checks"]
+}

@@ -1,0 +1,32 @@
+# Implementation status — 2026-10-29
+
+## Scope and BI source
+Implemented a standalone Node/TypeScript app under `volt-app/`; Python baseline remains separately runnable. Supplied BI documents are Business Rules v2.2 and Data Model ERD v2.2, pair ID `order-rescue-demo-30-v2.2`. The rules reference absent `Order_Rescue_Data_Model_30_Cases_v2.2.json`, `Order_Rescue_Test_Cases_30_v2.2.json`, and a v2.1 workbook. The real JSON schema, seeds, policy profile, and original 30-case evaluation remain BLOCKED. No BI documents were modified.
+
+`fixtures/synthetic/cases.json` contains synthetic development examples, including lifecycle precheck control. This is not reconstructed BI data. Documented constraints include the six public assessment fields and enums, two assessment phases, a single buyer question, reply matching, manual no-reply selection of phase one without reassessment, final copy behavior, max attempts 3 from the business rules, and no reply timeout. In-memory fixture format, state labels for review outcomes, source adapter shape, and policy details not defined by missing BI profile are implementation assumptions. Unknown prechecks remain durable REVIEW; lifecycle blockers are durable BLOCKED without invented final assessment. Verified active disruption remains a valid eligible HOLD recommendation.
+
+## Architecture and changes
+- `src/agent.ts`: model call now runs through the VoltAgent `Agent.generateText` API with an explicit direct DeepSeek provider and `Output.object` Zod schema. No direct AI SDK call bypasses VoltAgent.
+- `src/harness.ts`: eligibility precheck before model execution; persisted precheck result; source ownership/phase/provenance validation; sourced internal decision facts with exact source supporting text; policy gate; durable HUMAN_REVIEW for model/parse/schema/source failures; phase-one and phase-two immutable input snapshots and SHA-256 hashes; SQLite transactional reply/no-reply event idempotency and distinct payload-hash conflict detection. Reply event IDs are reserved before the model call; concurrent same-ID events are reported as in progress and changed payload reuse is rejected.
+- Reply selection still persists full after-reply assessment/policy and copies those objects to final, source 2. USER_NO_REPLY performs no assessment call, keeps phase two null, and copies initial assessment/policy to final, source 1. Precheck/failure review branches are not assigned undocumented final semantics.
+- `tests/harness.test.ts`, `tests/workflow.test.ts`: retained regression coverage. `e2e/ui.spec.ts` exercises browser UI using controlled API responses. Playwright config/package lock added. The production app server was smoke-tested on port 4391 and `/api/cases` returned all four synthetic cases. UI stores the current run ID locally and resumes it on refresh.
+
+## Versions and live provider result
+VoltAgent 2.11.0, AI SDK 6.0.317, `@ai-sdk/deepseek` 1.0.0, better-sqlite3 12.11.1, Hono 4.13.14, `@hono/node-server` 1.19.11, Zod 4.6.7, TypeScript 5.9.3, Playwright 1.64.1. Default model is `deepseek-chat`, configurable by `DEEPSEEK_MODEL`; key is read server-side from `DEEPSEEK_API_KEY`.
+
+Live synthetic calls were run through the VoltAgent path. `Output.object` returned valid data but emitted an unsupported `responseFormat` warning, so the app uses JSON prompting + `JSON.parse` + Zod. One isolated fallback probe passed (2,569 ms, 1,429 tokens). A full harness initial→reply flow then passed with two calls: initial 2,515 ms / 1,491 tokens; after-reply 1,931 ms / 1,751 tokens. Both final-copy/source assertions passed. One separate harness live call returned HUMAN_REVIEW because the model paraphrased fact supporting text; no assessment was fabricated. The current adapter binds cited decision facts to authoritative source text before validation. Live usage figures are SDK-reported. VoltAgent leaves an open telemetry handle after calls; the probe process was interrupted after successful outputs (exit 130), with no further model requests. Synthetic inputs only; no real messages. Model was requested as `deepseek-chat`; provider did not expose a separate resolved model ID.
+
+## Verification results
+- `npm run typecheck`: PASSED.
+- `npm test`: PASSED, 6 tests. Covers six-field schema, phase-two snapshot/hash, reply final exact copy, no-reply zero second assessment and exact initial copy, lifecycle precheck without model call, provenance upgrade rejected and persisted as HUMAN_REVIEW, injected model failure persisted without fabricated assessment, duplicate event replay, changed-payload conflict.
+- `npm run build`: PASSED.
+- `npm run test:e2e`: PASSED, 1 Playwright browser test using mocked API routes for UI interaction and safe text rendering. Actual Hono server smoke: PASSED, started at port 4391 and served `/api/cases`. Harness business logic is covered separately by integration tests.
+- `python3 -m pytest -q`: PASSED, 26 tests, one Starlette/httpx deprecation warning.
+- Live DeepSeek: full two-assessment reply flow and a standalone JSON fallback probe passed; one live model paraphrase triggered persisted review validation. Manual no-reply was tested offline only. All live inputs were synthetic.
+- Original BI 30-case suite: BLOCKED, required JSON files are absent.
+
+## Remaining limitations
+The synthetic adapter does not join the actual nine-table BI JSON model because that JSON is missing. Policy profile and action catalog are incomplete; behavior beyond explicit business-rule constraints remains conservative and should be reconciled when the profile arrives. Decision-fact checks validate provenance, ownership, availability, and source supporting text; this is not proof of semantic entailment. LLM interpretation remains fallible. Browser test mocks API responses; it does not replace a full browser test against a running live-model backend. In-flight crashes are not guaranteed exactly-once billing, and an after-reply failure is persisted as HUMAN_REVIEW rather than retried automatically. Existing database files created by earlier prototype revisions may need deletion or migration before startup because the schema has evolved.
+
+## Run
+From `volt-app/`: `npm install`; create `.env` from `.env.example` and set server-side DeepSeek key; `npm run dev`; open `http://localhost:3000`. Offline checks: `npm run typecheck && npm test && npm run build && npm run test:e2e`. Use only synthetic fixtures; no real messages or logistics operations are connected.

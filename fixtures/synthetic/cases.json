@@ -1,0 +1,77 @@
+[
+  {
+    "case_id": "SYN-01",
+    "title": "Reported absence; reply confirms availability",
+    "failed_event": {
+      "status": "RECIPIENT_UNAVAILABLE",
+      "time": "2026-10-24T14:30:00+07:00",
+      "courier_note": "A family member reports buyer is at work; no receiver was available.",
+      "reported_reason": "RECIPIENT_UNAVAILABLE",
+      "as_of": "2026-10-24T15:00:00+07:00"
+    },
+    "attempts_used": 1,
+    "return_state": "NOT_STARTED",
+    "deadline": "2026-10-28T15:00:00+07:00",
+    "payment": "PREPAID",
+    "route": "SYN-ROUTE-01",
+    "ops": null
+  },
+  {
+    "case_id": "SYN-02",
+    "title": "Unknown cause; buyer context before initial",
+    "failed_event": {
+      "status": "CONTACT_FAILED",
+      "time": "2026-10-24T14:30:00+07:00",
+      "courier_note": "Contact attempt recorded.",
+      "reported_reason": null,
+      "as_of": "2026-10-24T15:00:00+07:00"
+    },
+    "attempts_used": 1,
+    "return_state": "NOT_STARTED",
+    "deadline": "2026-10-28T15:00:00+07:00",
+    "payment": "UNKNOWN",
+    "route": null,
+    "ops": null,
+    "buyer_context": "I was at the office when delivery was attempted."
+  },
+  {
+    "case_id": "SYN-03",
+    "title": "Verified disruption",
+    "failed_event": {
+      "status": "DELIVERY_FAILED",
+      "time": "2026-10-24T14:30:00+07:00",
+      "courier_note": "Delivery did not complete.",
+      "reported_reason": null,
+      "as_of": "2026-10-24T15:00:00+07:00"
+    },
+    "attempts_used": 1,
+    "return_state": "NOT_STARTED",
+    "deadline": "2026-10-28T15:00:00+07:00",
+    "payment": "PREPAID",
+    "route": "SYN-ROUTE-23",
+    "ops": {
+      "verified": true,
+      "status": "ACTIVE",
+      "route_match": true,
+      "time_match": true,
+      "reassess_required": true
+    }
+  },
+  {
+    "case_id": "SYN-04",
+    "title": "Lifecycle started; precheck review",
+    "failed_event": {
+      "status": "DELIVERY_FAILED",
+      "time": "2026-10-24T14:30:00+07:00",
+      "courier_note": null,
+      "reported_reason": null,
+      "as_of": "2026-10-24T15:00:00+07:00"
+    },
+    "attempts_used": 1,
+    "return_state": "STARTED",
+    "deadline": "2026-10-28T15:00:00+07:00",
+    "payment": "PREPAID",
+    "route": null,
+    "ops": null
+  }
+]
