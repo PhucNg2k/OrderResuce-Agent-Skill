@@ -5,10 +5,10 @@ Read this before changing the app. This repository is a synthetic demo of an ope
 ## Architecture
 
 - `src/domain.ts`: schemas and public workflow types.
-- `src/agent.ts`: one VoltAgent assessment agent using the server-side DeepSeek provider.
+- `src/agent.ts`: one VoltAgent assessment agent using the server-side OpenAI provider (`gpt-6.1-terra` by default).
 - `src/harness.ts`: synthetic case adapter, lifecycle checks, assessment snapshots, provenance validation, deterministic policy gate, SQLite persistence, and reply/no-reply workflow.
 - `src/server.ts`: Hono API and static UI server.
-- `public/index.html`: browser demo.
+- `public/index.html`: responsive browser workbench with SSE draft output and validated decision display.
 - `fixtures/`: synthetic development cases only.
 - `tests/` and `e2e/`: Node test suite and Playwright UI test.
 
@@ -16,13 +16,15 @@ Read this before changing the app. This repository is a synthetic demo of an ope
 
 1. Load synthetic case and perform deterministic eligibility/lifecycle prechecks.
 2. Build the phase-specific input and source registry.
-3. Run one VoltAgent assessment call for that phase.
+3. Stream one VoltAgent assessment call for that phase; token deltas are draft text only.
 4. Validate the exact response schema and evidence provenance.
 5. Apply deterministic policy gates and preconditions.
 6. Persist the result and immutable input snapshot to SQLite.
 7. For a pending question, accept a matching buyer reply or manual no-reply event and persist the selected final result.
 
 The model never chooses which workflow step runs. On model, parse, schema, provenance, or persistence errors, surface a human-review outcome; never invent an assessment as fallback.
+
+The UI may show streamed draft text while an assessment is running. Only display the assessment and policy result as authoritative after the full response passes validation and is persisted. Show concise, evidence-based explanations and policy checks; do not expose hidden internal chain-of-thought.
 
 ## Safety rules
 
@@ -47,6 +49,6 @@ npm run test:e2e
 npm run dev
 ```
 
-Live assessment requires `DEEPSEEK_API_KEY` in local `.env`. Never commit secrets, SQLite files, `node_modules/`, `dist/`, Playwright reports, or test results.
+Live assessment requires `OPENAI_API_KEY` in local `.env`; `OPENAI_MODEL` optionally overrides the default `gpt-6.1-terra`, and `OPENAI_REASONING_EFFORT` defaults to `high`. Higher effort can increase latency and token use. Never expose hidden internal reasoning; show only concise evidence-based explanation. Never commit secrets, SQLite files, `node_modules/`, `dist/`, Playwright reports, or test results.
 
 The authoritative BI v2.2 datasets are missing. Do not claim BI acceptance or real operational readiness from these synthetic development fixtures.
