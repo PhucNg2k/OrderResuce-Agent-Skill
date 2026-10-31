@@ -127,19 +127,151 @@ test('no-reply after round one selects exact latest assessment and policy withou
 });
 
 
-test('semantic verifier UNSUPPORTED or UNCERTAIN blocks retry and is persisted separately',async()=>{
+test('semantic verifier uncertainty blocks retry and asks one existing buyer-resolvable follow-up',async()=>{
   calls=0;
   h.setAssessorForTests(async(input)=>{
     if(!input.runtime_context.length)return output();
     const ref=input.runtime_context.at(-1)!.source_ref, text=input.sources[ref].text;
-    return {assessment:{evidence:[{source_ref:ref,fact:'Buyer reply received.',verification:'DIRECT_BUYER_STATEMENT'}],hypothesis:'AVAILABILITY_ISSUE',confidence:'HIGH',missing_info:[],question_key:null,candidate_action:'STANDARD_REATTEMPT'},decision_facts:{intent:'CONFIRMED',availability:'CONFIRMED',cod_readiness:'UNKNOWN',address:'UNKNOWN',refusal:'NONE',supporting_evidence:[{fact_key:'intent',source_ref:ref,supporting_text:text},{fact_key:'availability',source_ref:ref,supporting_text:text}],explanation:'Buyer facts asserted.',question_text:null}};
+    return {assessment:{evidence:[{source_ref:ref,fact:'Buyer reply received.',verification:'DIRECT_BUYER_STATEMENT'}],hypothesis:'AVAILABILITY_ISSUE',confidence:'HIGH',missing_info:[],question_key:'CONFIRM_INTENT',candidate_action:'STANDARD_REATTEMPT'},decision_facts:{intent:'CONFIRMED',availability:'CONFIRMED',cod_readiness:'UNKNOWN',address:'UNKNOWN',refusal:'NONE',supporting_evidence:[{fact_key:'intent',source_ref:ref,supporting_text:text},{fact_key:'availability',source_ref:ref,supporting_text:text}],explanation:'Buyer facts asserted.',question_text:'Will you or someone else be available to receive it tomorrow morning?'}};
   });
   h.setVerifierForTests(async()=>({checks:[{fact_key:'intent',verdict:'SUPPORTED',source_ref:'SYN-01-REPLY',supporting_text:'Yes',explanation:'Intent.'},{fact_key:'availability',verdict:'UNCERTAIN',source_ref:null,supporting_text:null,explanation:'No clear time.'},{fact_key:'address',verdict:'SUPPORTED',source_ref:'SYN-01-REPLY',supporting_text:'Yes',explanation:'No change.'},{fact_key:'refusal',verdict:'SUPPORTED',source_ref:'SYN-01-REPLY',supporting_text:'Yes',explanation:'No refusal.'}]}));
   const first=await h.start('SYN-01');
-  const done=await h.reply(first.id,first.question_id,'Yes, I still want it.','verify-uncertain');
-  assert.equal(done.final_policy.final_action,'ESCALATE_REVIEW');
-  assert.equal(done.final_policy.policy_gate,'ESCALATED');
-  assert.equal(done.assessment_history[1].verification.checks.find((x:any)=>x.fact_key==='availability').verdict,'UNCERTAIN');
+  const waiting=await h.reply(first.id,first.question_id,'Yes, I still want it.','verify-uncertain');
+  assert.equal(waiting.state,'WAITING_FOR_BUYER');
+  assert.equal(JSON.parse(waiting.question).question_text,'Will you or someone else be available to receive it tomorrow morning?');
+  assert.equal(waiting.final,null);
+  assert.equal(waiting.after_policy.final_action,'CLARIFY');
+  assert.equal(waiting.assessment_history[1].assessment.candidate_action,'STANDARD_REATTEMPT');
+  assert.equal(waiting.assessment_history[1].effective_policy.final_action,'CLARIFY');
+  assert.equal(waiting.assessment_history[1].verification.checks.find((x:any)=>x.fact_key==='availability').verdict,'UNCERTAIN');
+});
+
+test('neutral absence of address change or refusal does not block supported retry facts',async()=>{
+  h.setAssessorForTests(async input=>{
+    if(!input.runtime_context.length)return output();
+    const ref=input.runtime_context.at(-1)!.source_ref,text=input.sources[ref].text;
+    return {assessment:{evidence:[{source_ref:ref,fact:'Buyer confirms a feasible receiving slot.',verification:'DIRECT_BUYER_STATEMENT'}],hypothesis:'AVAILABILITY_ISSUE',confidence:'HIGH',missing_info:[],question_key:null,candidate_action:'STANDARD_REATTEMPT'},decision_facts:{intent:'CONFIRMED',availability:'CONFIRMED',cod_readiness:'UNKNOWN',address:'UNKNOWN',refusal:'NONE',supporting_evidence:[{fact_key:'intent',source_ref:ref,supporting_text:text},{fact_key:'availability',source_ref:ref,supporting_text:text}],explanation:'Intent and a feasible receiving slot are directly supported.',question_text:null}};
+  });
+  h.setVerifierForTests(async()=>({checks:[
+    {fact_key:'intent',verdict:'SUPPORTED',source_ref:'SYN-01-REPLY',supporting_text:'Yes, tomorrow morning works.',explanation:'Intent.'},
+    {fact_key:'availability',verdict:'SUPPORTED',source_ref:'SYN-01-REPLY',supporting_text:'Yes, tomorrow morning works.',explanation:'Receiving slot.'},
+    {fact_key:'address',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No address change request appears in the available conversation.'},
+    {fact_key:'refusal',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No refusal appears in the available conversation.'},
+  ]}));
+  const first=await h.start('SYN-01');
+  const done=await h.reply(first.id,first.question_id,'Yes, tomorrow morning works.','verify-not-present');
+  assert.equal(done.state,'COMPLETED');
+  assert.equal(done.final_policy.final_action,'STANDARD_REATTEMPT');
+});
+
+test('verifier uncertainty generates a distinct follow-up when the assessor supplied none',async()=>{
+  let generated=0;
+  h.setQuestionGeneratorForTests(async(_input:any,facts:string[])=>{
+    generated++;
+    assert.deepEqual(facts,['availability']);
+    return {question_key:'CONFIRM_INTENT',question_text:'Will you or someone else be available to receive it tomorrow morning?',metadata:{version:'stub-question-v1'}};
+  });
+  h.setAssessorForTests(async input=>{
+    if(!input.runtime_context.length)return output();
+    const ref=input.runtime_context.at(-1)!.source_ref,text=input.sources[ref].text;
+    return {assessment:{evidence:[{source_ref:ref,fact:'Buyer reply received.',verification:'DIRECT_BUYER_STATEMENT'}],hypothesis:'AVAILABILITY_ISSUE',confidence:'HIGH',missing_info:[],question_key:null,candidate_action:'STANDARD_REATTEMPT'},decision_facts:{intent:'CONFIRMED',availability:'CONFIRMED',cod_readiness:'UNKNOWN',address:'UNKNOWN',refusal:'NONE',supporting_evidence:[{fact_key:'intent',source_ref:ref,supporting_text:text},{fact_key:'availability',source_ref:ref,supporting_text:text}],explanation:'The reply proposes a slot but does not clearly confirm a receiver.',question_text:null}};
+  });
+  h.setVerifierForTests(async()=>({checks:[
+    {fact_key:'intent',verdict:'SUPPORTED',source_ref:'SYN-01-REPLY',supporting_text:'Yes, tomorrow morning.',explanation:'Intent.'},
+    {fact_key:'availability',verdict:'UNCERTAIN',source_ref:'SYN-01-REPLY',supporting_text:'Yes, tomorrow morning.',explanation:'A receiver is not explicit.'},
+    {fact_key:'address',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No address change request appears.'},
+    {fact_key:'refusal',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No refusal appears.'},
+  ]}));
+  const first=await h.start('SYN-01');
+  const waiting=await h.reply(first.id,first.question_id,'Yes, tomorrow morning.','verify-generate-question');
+  const last=waiting.assessment_history.at(-1);
+  assert.equal(generated,1);
+  assert.equal(waiting.state,'WAITING_FOR_BUYER');
+  assert.equal(JSON.parse(waiting.question).question_text,'Will you or someone else be available to receive it tomorrow morning?');
+  assert.equal(last.assessment.question_key,null);
+  assert.equal(last.internal_facts.question_text,null);
+  assert.equal(last.followup_question.question_text,JSON.parse(waiting.question).question_text);
+  assert.equal(last.followup_question_metadata.version,'stub-question-v1');
+  assert.equal(last.effective_policy.final_action,'CLARIFY');
+  assert.equal(last.verification.checks.find((x:any)=>x.fact_key==='availability').verdict,'UNCERTAIN');
+  h.setQuestionGeneratorForTests();
+});
+
+test('follow-up generation failure leaves the reply in human review without a fabricated question',async()=>{
+  h.setQuestionGeneratorForTests(async()=>{throw new Error('injected follow-up generation failure')});
+  h.setAssessorForTests(async input=>{
+    if(!input.runtime_context.length)return output();
+    const ref=input.runtime_context.at(-1)!.source_ref,text=input.sources[ref].text;
+    return {assessment:{evidence:[{source_ref:ref,fact:'Buyer reply received.',verification:'DIRECT_BUYER_STATEMENT'}],hypothesis:'AVAILABILITY_ISSUE',confidence:'HIGH',missing_info:[],question_key:null,candidate_action:'STANDARD_REATTEMPT'},decision_facts:{intent:'CONFIRMED',availability:'CONFIRMED',cod_readiness:'UNKNOWN',address:'UNKNOWN',refusal:'NONE',supporting_evidence:[{fact_key:'intent',source_ref:ref,supporting_text:text},{fact_key:'availability',source_ref:ref,supporting_text:text}],explanation:'Availability remains uncertain.',question_text:null}};
+  });
+  h.setVerifierForTests(async()=>({checks:[
+    {fact_key:'intent',verdict:'SUPPORTED',source_ref:'SYN-01-REPLY',supporting_text:'Tomorrow morning.',explanation:'Intent.'},
+    {fact_key:'availability',verdict:'UNCERTAIN',source_ref:null,supporting_text:null,explanation:'Receiver is not explicit.'},
+    {fact_key:'address',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No address change request appears.'},
+    {fact_key:'refusal',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No refusal appears.'},
+  ]}));
+  const first=await h.start('SYN-01');
+  await assert.rejects(()=>h.reply(first.id,first.question_id,'Tomorrow morning.','verify-question-error'),/injected follow-up generation failure/);
+  const failed=h.getRun(first.id);
+  assert.equal(failed.state,'HUMAN_REVIEW');
+  assert.equal(failed.final,null);
+  assert.equal(failed.question,first.question);
+  h.setQuestionGeneratorForTests();
+});
+
+test('explicit retry can ask the verifier follow-up after a prior reply failure',async()=>{
+  h.setQuestionGeneratorForTests(async()=>({question_key:'CONFIRM_INTENT',question_text:'Will you or someone else be available tomorrow morning?',metadata:{version:'retry-question-stub-v1'}}));
+  h.setAssessorForTests(async input=>{
+    if(!input.runtime_context.length)return output();
+    throw new Error('injected reply assessment failure');
+  });
+  const first=await h.start('SYN-01');
+  await assert.rejects(()=>h.reply(first.id,first.question_id,'Tomorrow morning works.','retry-q-first-reply'),/injected reply assessment failure/);
+  const review=h.getRun(first.id);
+  assert.equal(review.state,'HUMAN_REVIEW');
+  h.setAssessorForTests(async input=>{
+    const ref=input.runtime_context.at(-1)!.source_ref,text=input.sources[ref].text;
+    return {assessment:{evidence:[{source_ref:ref,fact:'Buyer proposes a delivery slot.',verification:'DIRECT_BUYER_STATEMENT'}],hypothesis:'AVAILABILITY_ISSUE',confidence:'HIGH',missing_info:[],question_key:null,candidate_action:'STANDARD_REATTEMPT'},decision_facts:{intent:'CONFIRMED',availability:'CONFIRMED',cod_readiness:'UNKNOWN',address:'UNKNOWN',refusal:'NONE',supporting_evidence:[{fact_key:'intent',source_ref:ref,supporting_text:text},{fact_key:'availability',source_ref:ref,supporting_text:text}],explanation:'The buyer proposes a slot but availability remains uncertain.',question_text:null}};
+  });
+  h.setVerifierForTests(async()=>({checks:[
+    {fact_key:'intent',verdict:'SUPPORTED',source_ref:'SYN-01-REPLY',supporting_text:'Tomorrow morning works.',explanation:'Intent.'},
+    {fact_key:'availability',verdict:'UNCERTAIN',source_ref:null,supporting_text:null,explanation:'Receiver is not explicit.'},
+    {fact_key:'address',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No address change request appears.'},
+    {fact_key:'refusal',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No refusal appears.'},
+  ]}));
+  const waiting=await h.retry(first.id,'retry-verifier-question');
+  assert.equal(waiting.state,'WAITING_FOR_BUYER');
+  assert.equal(JSON.parse(waiting.question).question_text,'Will you or someone else be available tomorrow morning?');
+  assert.equal(waiting.assessment_history.at(-1).followup_question_source,'SEMANTIC_VERIFIER_FOLLOWUP');
+  h.setQuestionGeneratorForTests();
+});
+
+test('verifier uncertainty does not generate a third question after the two-question budget',async()=>{
+  let generated=0;calls=0;
+  h.setQuestionGeneratorForTests(async()=>{generated++;return {question_key:'CONFIRM_INTENT',question_text:'A third question must not be asked.'}});
+  h.setAssessorForTests(async input=>{
+    calls++;
+    if(calls===1)return clarificationOutput('When can someone receive it?');
+    const ref=input.runtime_context.at(-1)!.source_ref,text=input.sources[ref].text;
+    if(calls===2)return clarificationOutput('Can someone receive at that time?','CLARIFY',ref);
+    return {assessment:{evidence:[{source_ref:ref,fact:'Buyer reply received.',verification:'DIRECT_BUYER_STATEMENT'}],hypothesis:'AVAILABILITY_ISSUE',confidence:'HIGH',missing_info:[],question_key:null,candidate_action:'STANDARD_REATTEMPT'},decision_facts:{intent:'CONFIRMED',availability:'CONFIRMED',cod_readiness:'UNKNOWN',address:'UNKNOWN',refusal:'NONE',supporting_evidence:[{fact_key:'intent',source_ref:ref,supporting_text:text},{fact_key:'availability',source_ref:ref,supporting_text:text}],explanation:'The reply remains unclear on a receiver.',question_text:null}};
+  });
+  h.setVerifierForTests(async()=>({checks:[
+    {fact_key:'intent',verdict:'SUPPORTED',source_ref:'SYN-01-REPLY-2',supporting_text:'I still want it.',explanation:'Intent.'},
+    {fact_key:'availability',verdict:'UNCERTAIN',source_ref:null,supporting_text:null,explanation:'No receiver is confirmed.'},
+    {fact_key:'address',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No address change request appears.'},
+    {fact_key:'refusal',verdict:'NOT_PRESENT',source_ref:null,supporting_text:null,explanation:'No refusal appears.'},
+  ]}));
+  const first=await h.start('SYN-01');
+  const after1=await h.reply(first.id,first.question_id,'I still want it.','verify-budget-r1');
+  assert.equal(after1.state,'WAITING_FOR_BUYER');
+  const final=await h.reply(first.id,after1.question_id,'I am not sure.','verify-budget-r2');
+  assert.equal(calls,3);
+  assert.equal(generated,0);
+  assert.equal(final.interactions.length,2);
+  assert.equal(final.question,null);
+  assert.equal(final.final_policy.final_action,'ESCALATE_REVIEW');
+  h.setQuestionGeneratorForTests();
 });
 
 

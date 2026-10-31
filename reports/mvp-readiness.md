@@ -31,7 +31,7 @@ Date: 2026-10-31. Status: **core offline flow is implemented and tested; live-pr
 Runtime used for successful offline checks: Node 22.14.0, npm 10.9.2. `npm ci`: PASS on Node 22.14.0 (433 packages installed; npm reported 24 dependency advisories). `better-sqlite3` was rebuilt for this ABI; the prior Node 25 ABI mismatch no longer blocks tests.
 
 - `npm run typecheck`: PASS.
-- `npm test`: PASS, 25 tests, including process-restart recovery and a child-process VoltAgent stream/shutdown regression, explicit retry, refusal review, two-round cap, early stop, no-reply after first reply, verifier uncertainty denial, stale failure guard, and unsupported source quote rejection.
+- `npm test`: PASS, 30 tests, including process-restart recovery and a child-process VoltAgent stream/shutdown regression, explicit retry, refusal review, two-round cap, early stop, no-reply after first reply, verifier clarification and neutral NOT_PRESENT handling, stale failure guard, and unsupported source quote rejection.
 - `npm run build`: PASS.
 - `npm run test:e2e`: PASS, 3 Playwright tests: mocked UI coverage, real Hono/harness/SQLite two-round flow with refresh, and explicit retry, using deterministic assessor/verifier stubs.
 - Compiled server smoke: PASS; `node dist/src/server.js` on `HOST=127.0.0.1 PORT=4402 DB_PATH=/tmp/order-rescue-start-smoke.sqlite`; `/healthz` returned `{"status":"ok","data_mode":"synthetic-demo"}`, `/api/cases` returned four labeled cases, and direct SIGINT shutdown exited 0. `npm start` also served health/cases; npm itself returned 130 on terminal SIGINT.
@@ -51,6 +51,8 @@ See [live-check-2026-10-31.md](live-check-2026-10-31.md). Nine bounded synthetic
 | Original evaluation | 30 authoritative cases | Not replaced by demo tests | Blocked; JSON inputs absent |
 
 ## Remaining blockers and limits
+
+- The semantic verifier now distinguishes unresolved buyer-resolvable retry prerequisites from address/refusal guard checks. Uncertain intent/availability/COD readiness can trigger one bounded, targeted follow-up question, while neutral absence of address-change/refusal evidence does not require a positive quote. This behavior passed offline stub-backed harness tests only; the exhausted live request quota means the change has not been live-verified.
 
 - Live verifier conservatism and output reliability need review: an earlier verifier supplied an unsupported span, a reply response parsed as incomplete JSON, and a later verifier conservatively rejected address support. Continue to fail closed; validate cases with business reviewers.
 - Shared VoltAgent observability shutdown and dedicated OpenAI transport cleanup are wired and passed a live natural-exit check. The bounded live budget is exhausted. Earlier live model outputs included unsupported evidence and incomplete JSON; continue to fail closed and have business reviewers assess semantic quality.

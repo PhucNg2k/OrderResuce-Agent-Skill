@@ -2,8 +2,8 @@ import Database from 'better-sqlite3';
 import { randomUUID, createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { assessmentSchema, type CaseInput, type Assessment, type Policy, type ConversationTurn } from './domain.js';
-import { assess as liveAssess, envelopeSchema, verifySemantics as liveVerify } from './agent.js';
+import { assessmentSchema, questionKeys, type CaseInput, type Assessment, type Policy, type ConversationTurn } from './domain.js';
+import { assess as liveAssess, envelopeSchema, generateFollowupQuestion as liveQuestionGenerator, verifySemantics as liveVerify } from './agent.js';
 
 const dbPath = process.env.DB_PATH || 'order-rescue.sqlite';
 if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });
@@ -36,6 +36,10 @@ export function setAssessorForTests(fn: Assessor) { assessor = fn; }
 type Verifier = (input: CaseInput, proposed: unknown) => Promise<any>;
 let verifier: Verifier = liveVerify;
 export function setVerifierForTests(fn: Verifier) { verifier = fn; }
+type GeneratedQuestion = { question_key: typeof questionKeys[number] | null; question_text: string | null; metadata?: any };
+type QuestionGenerator = (input: CaseInput, unresolvedFacts: string[]) => Promise<GeneratedQuestion | null>;
+let questionGenerator: QuestionGenerator = liveQuestionGenerator;
+export function setQuestionGeneratorForTests(fn?: QuestionGenerator) { questionGenerator = fn || liveQuestionGenerator; }
 const MAX_CLARIFICATION_ROUNDS = Number(process.env.MAX_CLARIFICATION_ROUNDS || 2);
 if (!Number.isInteger(MAX_CLARIFICATION_ROUNDS) || MAX_CLARIFICATION_ROUNDS < 1 || MAX_CLARIFICATION_ROUNDS > 2) throw new Error('MAX_CLARIFICATION_ROUNDS must be 1 or 2');
 const hash = (x: unknown) => createHash('sha256').update(JSON.stringify(x)).digest('hex');
@@ -145,17 +149,56 @@ function makeAssessmentRecord(runId: string, turnIndex: number, triggerEventId: 
   return { assessment_id: randomUUID(), run_id: runId, turn_index: turnIndex, trigger_event_id: triggerEventId, snapshot: input, snapshot_hash: hash(input), assessment: out.assessment, internal_facts: out.decision_facts, policy: p, metadata: raw.meta || {} };
 }
 function questionFrom(record: any, turnIndex: number) {
-  const questionText = record.internal_facts.question_text?.trim();
-  if ((record.effective_policy || record.policy).final_action !== 'CLARIFY' || !record.assessment.question_key || !questionText || questionText.length > 240) return null;
-  return { question_id: randomUUID(), question_key: record.assessment.question_key, question_text: questionText, status: 'PENDING', asked_at: new Date().toISOString(), turn_index: turnIndex };
+  if ((record.effective_policy || record.policy).final_action !== 'CLARIFY' || (record.question_suppressed && !record.followup_question)) return null;
+  const questionKey=record.followup_question?.question_key||record.assessment.question_key;
+  const questionText=(record.followup_question?.question_text||record.internal_facts.question_text)?.trim();
+  if (!questionKeys.includes(questionKey) || !questionText || questionText.length > 240) return null;
+  return { question_id: randomUUID(), question_key: questionKey, question_text: questionText, status: 'PENDING', asked_at: new Date().toISOString(), turn_index: turnIndex };
+}
+async function prepareVerifierFollowup(input:CaseInput,out:any,verified:any,record:any,interactions:ConversationTurn[]){
+  const unresolved:string[]=verified.clarification_facts||[];
+  if(!unresolved.length)return;
+  record.question_suppressed=true;
+  if(interactions.length>=MAX_CLARIFICATION_ROUNDS)return;
+  const priorTexts=new Set((input.conversation_context||[]).map(turn=>turn.question_text.trim().toLocaleLowerCase()));
+  const proposedKey=out.assessment.question_key,proposedText=out.decision_facts.question_text?.trim();
+  if(proposedKey&&questionKeys.includes(proposedKey)&&proposedText&&proposedText.length<=240&&!priorTexts.has(proposedText.toLocaleLowerCase())){
+    record.followup_question={question_key:proposedKey,question_text:proposedText};
+    record.followup_question_source='ASSESSMENT_PROPOSAL';
+    record.question_suppressed=false;
+    return;
+  }
+  const generated=await questionGenerator(input,unresolved);
+  if(!generated){record.followup_question_status='NO_USEFUL_QUESTION';return;}
+  const key=generated.question_key,text=generated.question_text?.trim();
+  record.followup_question_metadata=generated.metadata||null;
+  if(!key&&!text){record.followup_question_status='NO_USEFUL_QUESTION';return;}
+  if(key!=='CONFIRM_INTENT'||!text||text.length>240||priorTexts.has(text.toLocaleLowerCase()))throw Error('Generated follow-up question failed topic, length, or duplication validation');
+  record.followup_question={question_key:key,question_text:text};
+  record.followup_question_source='SEMANTIC_VERIFIER_FOLLOWUP';
+  record.followup_question_status='GENERATED';
+  record.question_suppressed=false;
 }
 async function verifyRetry(input: CaseInput, facts: unknown, candidatePolicy: Policy) {
   if (candidatePolicy.final_action !== 'STANDARD_REATTEMPT') return { policy: candidatePolicy, verification: null };
   const verification = await verifier(input, facts);
-  const required = ['intent','availability', ...(input.operational_context.payment === 'COD' ? ['cod_readiness'] : []), 'address','refusal'];
   const checks = new Map(verification.checks.map((x: any) => [x.fact_key, x.verdict]));
-  const failed = required.filter(key => checks.get(key) !== 'SUPPORTED');
-  return failed.length ? { policy: { ...candidatePolicy, policy_gate: 'ESCALATED' as const, final_action: 'ESCALATE_REVIEW', reason: `Semantic verification did not support retry prerequisites: ${failed.join(', ')}.` }, verification } : { policy: candidatePolicy, verification };
+  const proposed = facts as any;
+  const prerequisites = ['intent','availability', ...(input.operational_context.payment === 'COD' ? ['cod_readiness'] : [])];
+  const failedPrerequisites = prerequisites.filter(key => checks.get(key) !== 'SUPPORTED');
+  const addressNotPresent = proposed.address === 'UNKNOWN' && checks.get('address') === 'NOT_PRESENT';
+  const refusalNotPresent = proposed.refusal === 'NONE' && checks.get('refusal') === 'NOT_PRESENT';
+  const failedGuards = [
+    ...(checks.get('address') !== 'SUPPORTED' && !addressNotPresent ? ['address'] : []),
+    ...(checks.get('refusal') !== 'SUPPORTED' && !refusalNotPresent ? ['refusal'] : []),
+  ];
+  const failed = [...failedPrerequisites, ...failedGuards];
+  const canAskBuyer = failedPrerequisites.length > 0 && failedGuards.length === 0;
+  const reason = `Semantic verification did not support retry prerequisites: ${failed.join(', ')}.`;
+  const policy = !failed.length ? candidatePolicy : canAskBuyer
+    ? { ...candidatePolicy, policy_gate: 'PERMITTED' as const, final_action: 'CLARIFY' as const, reason: `${reason} A bounded buyer clarification may resolve these facts.` }
+    : { ...candidatePolicy, policy_gate: 'ESCALATED' as const, final_action: 'ESCALATE_REVIEW' as const, reason };
+  return { policy, verification, clarification_facts: canAskBuyer ? failed : [] };
 }
 function selectedFinalPolicy(record: any, exhausted: boolean) {
   const effective = record.effective_policy || record.policy;
@@ -171,13 +214,14 @@ export async function start(caseId: string, onToken?: TokenCallback) {
   try {
     const raw = await assessor(inp, onToken), out = envelope(raw), a = assessmentSchema.parse(out.assessment); validateSources(inp, out);
     const assessedPolicy = policy(c, a, out.decision_facts, check), verified = await verifyRetry(inp, out.decision_facts, assessedPolicy), p = verified.policy, record = makeAssessmentRecord(id, 0, null, inp, raw, out, assessedPolicy);
-    record.effective_policy = p; record.policy_override = p.final_action===assessedPolicy.final_action?null:{kind:'SEMANTIC_VERIFIER',from:assessedPolicy.final_action,to:p.final_action,reason:p.reason};
+    await prepareVerifierFollowup(inp,out,verified,record,[]);
+    record.effective_policy = p; record.policy_override = p.final_action===assessedPolicy.final_action?null:{kind:verified.clarification_facts?.length&&p.final_action==='CLARIFY'?'SEMANTIC_VERIFIER_FOLLOWUP':'SEMANTIC_VERIFIER',from:assessedPolicy.final_action,to:p.final_action,reason:p.reason};
     record.verification = verified.verification;
     const q = questionFrom(record, 1), history = [record];
     const terminal = !q;
     const finalP = !q && p.final_action === 'CLARIFY' ? { ...p, policy_gate: 'ESCALATED' as const, final_action: 'ESCALATE_REVIEW', reason: `No useful buyer question is available; unresolved information: ${a.missing_info.join(', ') || 'clarification cannot change the next action'}.` } : p;
     db.prepare('update runs set state=?,initial=?,initial_policy=?,question=?,question_id=?,assessment_history=?,final=?,final_policy=?,source=?,final_assessment_id=?,final_turn_index=?,meta=? where id=? and state=?')
-      .run(q ? 'WAITING_FOR_BUYER' : 'COMPLETED', JSON.stringify(a), JSON.stringify(p), q && JSON.stringify(q), q?.question_id || null, JSON.stringify(history), terminal ? JSON.stringify(a) : null, terminal ? JSON.stringify(finalP) : null, terminal ? 1 : null, terminal ? record.assessment_id : null, terminal ? 0 : null, JSON.stringify({ ...raw.meta, explanation: out.decision_facts.explanation, input_hash: ih, phase: 'initial', assessment_calls: 1, verification: verified.verification, mode: 'demo-multiturn-v1' }), id, 'ASSESSING');
+      .run(q ? 'WAITING_FOR_BUYER' : 'COMPLETED', JSON.stringify(a), JSON.stringify(p), q && JSON.stringify(q), q?.question_id || null, JSON.stringify(history), terminal ? JSON.stringify(a) : null, terminal ? JSON.stringify(finalP) : null, terminal ? 1 : null, terminal ? record.assessment_id : null, terminal ? 0 : null, JSON.stringify({ ...raw.meta, explanation: out.decision_facts.explanation, input_hash: ih, phase: 'initial', assessment_calls: 1, verification: verified.verification, question_generation: record.followup_question_metadata || null, mode: 'demo-multiturn-v1' }), id, 'ASSESSING');
     return view(rec(id));
   } catch (e) { recordFailure(id, 'initial', e); return view(rec(id)); }
 }
@@ -197,14 +241,14 @@ export async function reply(id: string, qid: string, text: string, eventId: stri
   try {
     const raw = await assessor(inp, onToken), out = envelope(raw); validateSources(inp, out);
     const assessedPolicy = policy(c, out.assessment, out.decision_facts, parse(r.precheck)), verified = await verifyRetry(inp, out.decision_facts, assessedPolicy), p = verified.policy;
-    const history = (parse(r.assessment_history) || []) as any[], record = makeAssessmentRecord(id, turnIndex, eventId, inp, raw, out, assessedPolicy); record.effective_policy=p; record.policy_override=p.final_action===assessedPolicy.final_action?null:{kind:'SEMANTIC_VERIFIER',from:assessedPolicy.final_action,to:p.final_action,reason:p.reason}; record.verification = verified.verification; history.push(record);
+    const history = (parse(r.assessment_history) || []) as any[], record = makeAssessmentRecord(id, turnIndex, eventId, inp, raw, out, assessedPolicy); await prepareVerifierFollowup(inp,out,verified,record,interactions); record.effective_policy=p; record.policy_override=p.final_action===assessedPolicy.final_action?null:{kind:verified.clarification_facts?.length&&p.final_action==='CLARIFY'?'SEMANTIC_VERIFIER_FOLLOWUP':'SEMANTIC_VERIFIER',from:assessedPolicy.final_action,to:p.final_action,reason:p.reason}; record.verification = verified.verification; history.push(record);
     const proposedQuestion = questionFrom(record, turnIndex + 1), q = interactions.length < MAX_CLARIFICATION_ROUNDS ? proposedQuestion : null, exhausted = !q && p.final_action === 'CLARIFY' && interactions.length >= MAX_CLARIFICATION_ROUNDS;
     const finalP = !q && p.final_action === 'CLARIFY' && !exhausted ? { ...p, policy_gate: 'ESCALATED' as const, final_action: 'ESCALATE_REVIEW', reason: `No useful buyer question is available; unresolved information: ${out.assessment.missing_info.join(', ') || 'clarification cannot change the next action'}.` } : selectedFinalPolicy(record, exhausted), terminal = !q;
     const result = db.transaction(() => {
       const cur = rec(id); if (cur.state !== 'ASSESSING_REPLY' || cur.question_id !== qid) throw Error('Run changed during assessment');
       const state = q ? 'WAITING_FOR_BUYER' : 'COMPLETED';
       db.prepare('update runs set state=?,phase2_input=?,phase2_hash=?,after_reply=?,after_policy=?,final=?,final_policy=?,source=2,reply=?,question=?,question_id=?,assessment_history=?,interactions=?,final_assessment_id=?,final_turn_index=?,meta=? where id=? and state=?')
-        .run(state, JSON.stringify(inp), ih, JSON.stringify(out.assessment), JSON.stringify(p), terminal ? JSON.stringify(out.assessment) : null, terminal ? JSON.stringify(finalP) : null, text, q && JSON.stringify(q), q?.question_id || null, JSON.stringify(history), JSON.stringify(interactions), terminal ? record.assessment_id : null, terminal ? turnIndex : null, JSON.stringify({ ...parse(r.meta), phase2: { ...raw.meta, explanation: out.decision_facts.explanation }, assessment_calls: (parse(r.meta)?.assessment_calls || 1) + 1, current_turn_index: turnIndex, verification: verified.verification, mode: 'demo-multiturn-v1' }), id, 'ASSESSING_REPLY');
+        .run(state, JSON.stringify(inp), ih, JSON.stringify(out.assessment), JSON.stringify(p), terminal ? JSON.stringify(out.assessment) : null, terminal ? JSON.stringify(finalP) : null, text, q && JSON.stringify(q), q?.question_id || null, JSON.stringify(history), JSON.stringify(interactions), terminal ? record.assessment_id : null, terminal ? turnIndex : null, JSON.stringify({ ...parse(r.meta), phase2: { ...raw.meta, explanation: out.decision_facts.explanation }, assessment_calls: (parse(r.meta)?.assessment_calls || 1) + 1, current_turn_index: turnIndex, verification: verified.verification, question_generation: record.followup_question_metadata || null, mode: 'demo-multiturn-v1' }), id, 'ASSESSING_REPLY');
       const result = view(rec(id)); updateEventResult(eventId, payload, result); return result;
     })(); return result;
   } catch (e) { recordFailure(id, `reply_${turnIndex}`, e); updateEventResult(eventId, payload, view(rec(id))); throw e; }
@@ -243,7 +287,7 @@ export async function retry(runId: string, attemptId: string, onToken?: TokenCal
     const raw=await assessor(inp,onToken), out=envelope(raw); validateSources(inp,out);
     const turnIndex=interactions.length, history=(parse(run.assessment_history)||[]) as any[];
     const checked=policy(c,out.assessment,out.decision_facts,parse(run.precheck)), verified=await verifyRetry(inp,out.decision_facts,checked), p=verified.policy;
-    const record=makeAssessmentRecord(runId,turnIndex,attemptId,inp,raw,out,checked); record.effective_policy=p; record.policy_override=p.final_action===checked.final_action?null:{kind:'SEMANTIC_VERIFIER',from:checked.final_action,to:p.final_action,reason:p.reason}; record.verification=verified.verification; history.push(record);
+    const record=makeAssessmentRecord(runId,turnIndex,attemptId,inp,raw,out,checked); await prepareVerifierFollowup(inp,out,verified,record,interactions); record.effective_policy=p; record.policy_override=p.final_action===checked.final_action?null:{kind:verified.clarification_facts?.length&&p.final_action==='CLARIFY'?'SEMANTIC_VERIFIER_FOLLOWUP':'SEMANTIC_VERIFIER',from:checked.final_action,to:p.final_action,reason:p.reason}; record.verification=verified.verification; history.push(record);
     const q=interactions.length<MAX_CLARIFICATION_ROUNDS?questionFrom(record,interactions.length+1):null;
     const exhausted=!q&&p.final_action==='CLARIFY'&&interactions.length>=MAX_CLARIFICATION_ROUNDS;
     const finalP=!q&&p.final_action==='CLARIFY'&&!exhausted?{...p,policy_gate:'ESCALATED' as const,final_action:'ESCALATE_REVIEW',reason:`No useful buyer question is available; unresolved information: ${out.assessment.missing_info.join(', ')||'clarification cannot change the next action'}.`}:selectedFinalPolicy(record,exhausted);
@@ -251,7 +295,7 @@ export async function retry(runId: string, attemptId: string, onToken?: TokenCal
     const result=db.transaction(()=>{
       const cur=rec(runId);if(cur.state!=='RETRYING')throw Error('Run changed during explicit retry');
       db.prepare(`update runs set state=?,initial=case when ? then ? else initial end,initial_policy=case when ? then ? else initial_policy end,phase2_input=case when ? then phase2_input else ? end,phase2_hash=case when ? then phase2_hash else ? end,after_reply=case when ? then after_reply else ? end,after_policy=case when ? then after_policy else ? end,final=?,final_policy=?,source=?,question=?,question_id=?,assessment_history=?,final_assessment_id=?,final_turn_index=?,meta=? where id=? and state='RETRYING'`)
-        .run(q?'WAITING_FOR_BUYER':'COMPLETED',initialPhase?1:0,JSON.stringify(out.assessment),initialPhase?1:0,JSON.stringify(p),initialPhase?1:0,JSON.stringify(inp),initialPhase?1:0,hash(inp),initialPhase?1:0,JSON.stringify(out.assessment),initialPhase?1:0,JSON.stringify(p),terminal?JSON.stringify(out.assessment):null,terminal?JSON.stringify(finalP):null,terminal?(initialPhase?1:2):null,q&&JSON.stringify(q),q?.question_id||null,JSON.stringify(history),terminal?record.assessment_id:null,terminal?finalTurn:null,JSON.stringify({...parse(run.meta),retry_phase:phase,retry_meta:raw.meta,explanation:out.decision_facts.explanation,verification:verified.verification,mode:'demo-multiturn-v1'}),runId);
+        .run(q?'WAITING_FOR_BUYER':'COMPLETED',initialPhase?1:0,JSON.stringify(out.assessment),initialPhase?1:0,JSON.stringify(p),initialPhase?1:0,JSON.stringify(inp),initialPhase?1:0,hash(inp),initialPhase?1:0,JSON.stringify(out.assessment),initialPhase?1:0,JSON.stringify(p),terminal?JSON.stringify(out.assessment):null,terminal?JSON.stringify(finalP):null,terminal?(initialPhase?1:2):null,q&&JSON.stringify(q),q?.question_id||null,JSON.stringify(history),terminal?record.assessment_id:null,terminal?finalTurn:null,JSON.stringify({...parse(run.meta),retry_phase:phase,retry_meta:raw.meta,explanation:out.decision_facts.explanation,verification:verified.verification,question_generation:record.followup_question_metadata||null,mode:'demo-multiturn-v1'}),runId);
       const done=view(rec(runId));updateEventResult(attemptId,payload,done);return done;
     })();return result;
   } catch(error) { recordFailure(runId,phase,error); updateEventResult(attemptId,payload,view(rec(runId))); throw error; }
