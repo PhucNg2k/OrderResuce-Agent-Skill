@@ -43,8 +43,9 @@ export function setQuestionGeneratorForTests(fn?: QuestionGenerator) { questionG
 const MAX_CLARIFICATION_ROUNDS = Number(process.env.MAX_CLARIFICATION_ROUNDS || 2);
 if (!Number.isInteger(MAX_CLARIFICATION_ROUNDS) || MAX_CLARIFICATION_ROUNDS < 1 || MAX_CLARIFICATION_ROUNDS > 2) throw new Error('MAX_CLARIFICATION_ROUNDS must be 1 or 2');
 const hash = (x: unknown) => createHash('sha256').update(JSON.stringify(x)).digest('hex');
+const now = () => new Date(process.env.NODE_ENV==='test'&&process.env.ORDER_RESCUE_TEST_NOW?process.env.ORDER_RESCUE_TEST_NOW:Date.now());
 
-function inputFor(c: any, interactions: ConversationTurn[] = [], active?: ConversationTurn): CaseInput {
+function inputFor(c: any, interactions: ConversationTurn[] = [], active?: ConversationTurn, assessmentAsOf = now().toISOString()): CaseInput {
   const sources: CaseInput['sources'] = { [`${c.case_id}-FAIL`]: { text: c.failed_event.status, verification: 'SOURCE_RECORD', owner_case: c.case_id, available_phase: 'T0' } };
   const buyer: { source_ref: string; text: string }[] = [];
   if (c.failed_event.courier_note) sources[`${c.case_id}-NOTE`] = { text: c.failed_event.courier_note, verification: 'UNVERIFIED_REPORT', owner_case: c.case_id, available_phase: 'T0' };
@@ -66,7 +67,7 @@ function inputFor(c: any, interactions: ConversationTurn[] = [], active?: Conver
   }
   const prior = active || interactions.at(-1) || null;
   return {
-    case_id: c.case_id, failed_event: c.failed_event, attempts_used: c.attempts_used,
+    case_id: c.case_id, failed_event: c.failed_event, assessment_as_of: assessmentAsOf, attempts_used: c.attempts_used,
     return_state: c.return_state, deadline: c.deadline, buyer_history: [],
     operational_context: { route: c.route, payment: c.payment, policy_version: 'demo-multiturn-v1', buyer_messages_t0: buyer, ops: c.ops },
     prior_buyer_question: prior ? { question_key: prior.question_key, question_text: prior.question_text } : null,
@@ -75,11 +76,11 @@ function inputFor(c: any, interactions: ConversationTurn[] = [], active?: Conver
     max_clarification_rounds: MAX_CLARIFICATION_ROUNDS, runtime_context, sources,
   };
 }
-function precheck(c: any) {
+function precheck(c: any, asOf = c.failed_event.as_of) {
   if (!Number.isInteger(c.attempts_used) || c.attempts_used < 0) return { eligibility: 'UNKNOWN', state: 'REVIEW', reason: 'Invalid attempts metadata.' };
   if (c.return_state === 'STARTED' || c.return_state === 'COMPLETED') return { eligibility: 'INELIGIBLE', state: 'BLOCKED', reason: 'Return lifecycle has started or completed.' };
   if (c.return_state !== 'NOT_STARTED' || !c.deadline) return { eligibility: 'UNKNOWN', state: 'REVIEW', reason: 'Lifecycle or logistics deadline is unknown.' };
-  const deadline = Date.parse(c.deadline), asof = Date.parse(c.failed_event.as_of);
+  const deadline = Date.parse(c.deadline), asof = Date.parse(asOf);
   if (!Number.isFinite(deadline) || !Number.isFinite(asof)) return { eligibility: 'UNKNOWN', state: 'REVIEW', reason: 'Invalid logistics timestamp.' };
   if (asof > deadline) return { eligibility: 'INELIGIBLE', state: 'BLOCKED', reason: 'Logistics deadline has passed.' };
   if (c.attempts_used >= 3) return { eligibility: 'INELIGIBLE', state: 'BLOCKED', reason: 'Documented demo max attempts (3) reached.' };
@@ -153,7 +154,7 @@ function questionFrom(record: any, turnIndex: number) {
   const questionKey=record.followup_question?.question_key||record.assessment.question_key;
   const questionText=(record.followup_question?.question_text||record.internal_facts.question_text)?.trim();
   if (!questionKeys.includes(questionKey) || !questionText || questionText.length > 240) return null;
-  return { question_id: randomUUID(), question_key: questionKey, question_text: questionText, status: 'PENDING', asked_at: new Date().toISOString(), turn_index: turnIndex };
+  return { question_id: randomUUID(), question_key: questionKey, question_text: questionText, status: 'PENDING', asked_at: now().toISOString(), turn_index: turnIndex };
 }
 async function prepareVerifierFollowup(input:CaseInput,out:any,verified:any,record:any,interactions:ConversationTurn[]){
   const unresolved:string[]=verified.clarification_facts||[];
@@ -208,8 +209,8 @@ function updateEventResult(eventId: string, payload: any, result: any) { db.prep
 
 export async function start(caseId: string, onToken?: TokenCallback) {
   const c = fixtures.find(x => x.case_id === caseId); if (!c) throw Error('Unknown synthetic case');
-  const id = randomUUID(), check = precheck(c), inp = inputFor(c), snap = JSON.stringify(inp), ih = hash(inp);
-  db.prepare('insert into runs(id,case_id,state,input,input_hash,created,precheck) values(?,?,?,?,?,?,?)').run(id, caseId, check.state === 'READY' ? 'ASSESSING' : check.state, snap, ih, new Date().toISOString(), JSON.stringify(check));
+  const id = randomUUID(), assessmentAsOf = now().toISOString(), check = precheck(c, assessmentAsOf), inp = inputFor(c, [], undefined, assessmentAsOf), snap = JSON.stringify(inp), ih = hash(inp);
+  db.prepare('insert into runs(id,case_id,state,input,input_hash,created,precheck) values(?,?,?,?,?,?,?)').run(id, caseId, check.state === 'READY' ? 'ASSESSING' : check.state, snap, ih, assessmentAsOf, JSON.stringify(check));
   if (check.state !== 'READY') return view(rec(id));
   try {
     const raw = await assessor(inp, onToken), out = envelope(raw), a = assessmentSchema.parse(out.assessment); validateSources(inp, out);
@@ -233,14 +234,14 @@ export async function reply(id: string, qid: string, text: string, eventId: stri
   const r = rec(id); if (!r) throw Error('Run not found');
   const payload = { type: 'BUYER_REPLY', run_id: id, question_id: qid, text }, duplicate = priorEvent(eventId, id, payload); if (duplicate) return duplicate;
   if (r.state !== 'WAITING_FOR_BUYER' || r.question_id !== qid) throw Error('Mismatched or non-pending question');
-  db.transaction(() => db.prepare('insert into events values(?,?,?,?,?,?)').run(eventId, id, 'BUYER_REPLY', hash(payload), '{}', new Date().toISOString()))();
-  const c = fixtures.find(x => x.case_id === r.case_id)!, interactions: ConversationTurn[] = parse(r.interactions) || [], active = parse(r.question) as ConversationTurn;
+  const c = fixtures.find(x => x.case_id === r.case_id)!, interactions: ConversationTurn[] = parse(r.interactions) || [], active = parse(r.question) as ConversationTurn, replyAt=now().toISOString();
+  db.transaction(() => db.prepare('insert into events values(?,?,?,?,?,?)').run(eventId, id, 'BUYER_REPLY', hash(payload), '{}', replyAt))();
   active.status = 'REPLIED'; active.reply_text = text; interactions.push(active);
-  const inp = inputFor(c, interactions), ih = hash(inp), turnIndex = interactions.filter(t => t.reply_text).length;
+  const inp = inputFor(c, interactions, undefined, replyAt), ih = hash(inp), turnIndex = interactions.filter(t => t.reply_text).length;
   const reserved = db.transaction(() => { const cur=rec(id); if(cur.state!=='WAITING_FOR_BUYER'||cur.question_id!==qid) throw Error('Run changed before reply reservation'); db.prepare("update runs set state='ASSESSING_REPLY',interactions=?,reply=? where id=? and state='WAITING_FOR_BUYER'").run(JSON.stringify(interactions),text,id); })();
   try {
     const raw = await assessor(inp, onToken), out = envelope(raw); validateSources(inp, out);
-    const assessedPolicy = policy(c, out.assessment, out.decision_facts, parse(r.precheck)), verified = await verifyRetry(inp, out.decision_facts, assessedPolicy), p = verified.policy;
+    const assessedPolicy = policy(c, out.assessment, out.decision_facts, precheck(c, replyAt)), verified = await verifyRetry(inp, out.decision_facts, assessedPolicy), p = verified.policy;
     const history = (parse(r.assessment_history) || []) as any[], record = makeAssessmentRecord(id, turnIndex, eventId, inp, raw, out, assessedPolicy); await prepareVerifierFollowup(inp,out,verified,record,interactions); record.effective_policy=p; record.policy_override=p.final_action===assessedPolicy.final_action?null:{kind:verified.clarification_facts?.length&&p.final_action==='CLARIFY'?'SEMANTIC_VERIFIER_FOLLOWUP':'SEMANTIC_VERIFIER',from:assessedPolicy.final_action,to:p.final_action,reason:p.reason}; record.verification = verified.verification; history.push(record);
     const proposedQuestion = questionFrom(record, turnIndex + 1), q = interactions.length < MAX_CLARIFICATION_ROUNDS ? proposedQuestion : null, exhausted = !q && p.final_action === 'CLARIFY' && interactions.length >= MAX_CLARIFICATION_ROUNDS;
     const finalP = !q && p.final_action === 'CLARIFY' && !exhausted ? { ...p, policy_gate: 'ESCALATED' as const, final_action: 'ESCALATE_REVIEW', reason: `No useful buyer question is available; unresolved information: ${out.assessment.missing_info.join(', ') || 'clarification cannot change the next action'}.` } : selectedFinalPolicy(record, exhausted), terminal = !q;
@@ -261,9 +262,10 @@ export function noReply(id: string, qid: string, eventId: string) {
     const cur = rec(id); if (cur.state !== 'WAITING_FOR_BUYER' || cur.question_id !== qid) throw Error('Run changed before no-reply finalization');
     const q = parse(cur.question); q.status = 'NO_REPLY';
     const history = parse(cur.assessment_history) || [], latest = history.at(-1);
+    const eligibility=precheck(fixtures.find(x=>x.case_id===cur.case_id),now().toISOString()), finalPolicy=eligibility.eligibility==='ELIGIBLE'?(latest.effective_policy||latest.policy):{eligibility:eligibility.eligibility,policy_gate:eligibility.state==='BLOCKED'?'BLOCKED':'ESCALATED',final_action:'ESCALATE_REVIEW',reason:eligibility.reason};
     db.prepare('update runs set state=?,question=?,final=?,final_policy=?,source=?,final_assessment_id=?,final_turn_index=? where id=? and state=?')
-      .run('COMPLETED', JSON.stringify(q), JSON.stringify(latest.assessment), JSON.stringify(latest.effective_policy || latest.policy), latest.turn_index === 0 ? 1 : 2, latest.assessment_id, latest.turn_index, id, 'WAITING_FOR_BUYER');
-    db.prepare('insert into events values(?,?,?,?,?,?)').run(eventId, id, 'USER_NO_REPLY', hash(payload), '{}', new Date().toISOString());
+      .run('COMPLETED', JSON.stringify(q), JSON.stringify(latest.assessment), JSON.stringify(finalPolicy), latest.turn_index === 0 ? 1 : 2, latest.assessment_id, latest.turn_index, id, 'WAITING_FOR_BUYER');
+    db.prepare('insert into events values(?,?,?,?,?,?)').run(eventId, id, 'USER_NO_REPLY', hash(payload), '{}', now().toISOString());
     const result = view(rec(id)); updateEventResult(eventId, payload, result); return result;
   })();
 }
@@ -275,18 +277,18 @@ export async function retry(runId: string, attemptId: string, onToken?: TokenCal
   const payload = { type: 'MANUAL_RETRY', run_id: runId, attempt_id: attemptId };
   const duplicate = priorEvent(attemptId, runId, payload); if (duplicate) return duplicate;
   if (run.state !== 'HUMAN_REVIEW') throw Error('Only HUMAN_REVIEW runs can be retried');
-  const c = fixtures.find(x => x.case_id === run.case_id)!;
+  const c = fixtures.find(x => x.case_id === run.case_id)!, retryAt=now().toISOString();
   const interactions = (parse(run.interactions) || []) as ConversationTurn[];
-  const inp = inputFor(c, interactions), phase = interactions.length ? `retry_reply_${interactions.length}` : 'retry_initial';
+  const inp = inputFor(c, interactions, undefined, retryAt), phase = interactions.length ? `retry_reply_${interactions.length}` : 'retry_initial';
   db.transaction(() => {
     const cur = rec(runId); if (cur.state !== 'HUMAN_REVIEW') throw Error('Run changed before retry reservation');
-    db.prepare('insert into events values(?,?,?,?,?,?)').run(attemptId,runId,'MANUAL_RETRY',hash(payload),'{}',new Date().toISOString());
+    db.prepare('insert into events values(?,?,?,?,?,?)').run(attemptId,runId,'MANUAL_RETRY',hash(payload),'{}',retryAt);
     db.prepare("update runs set state='RETRYING',error=NULL,meta=json_set(coalesce(meta,'{}'),'$.retry_attempts',coalesce(json_extract(meta,'$.retry_attempts'),0)+1) where id=? and state='HUMAN_REVIEW'").run(runId);
   })();
   try {
     const raw=await assessor(inp,onToken), out=envelope(raw); validateSources(inp,out);
     const turnIndex=interactions.length, history=(parse(run.assessment_history)||[]) as any[];
-    const checked=policy(c,out.assessment,out.decision_facts,parse(run.precheck)), verified=await verifyRetry(inp,out.decision_facts,checked), p=verified.policy;
+    const checked=policy(c,out.assessment,out.decision_facts,precheck(c,retryAt)), verified=await verifyRetry(inp,out.decision_facts,checked), p=verified.policy;
     const record=makeAssessmentRecord(runId,turnIndex,attemptId,inp,raw,out,checked); await prepareVerifierFollowup(inp,out,verified,record,interactions); record.effective_policy=p; record.policy_override=p.final_action===checked.final_action?null:{kind:verified.clarification_facts?.length&&p.final_action==='CLARIFY'?'SEMANTIC_VERIFIER_FOLLOWUP':'SEMANTIC_VERIFIER',from:checked.final_action,to:p.final_action,reason:p.reason}; record.verification=verified.verification; history.push(record);
     const q=interactions.length<MAX_CLARIFICATION_ROUNDS?questionFrom(record,interactions.length+1):null;
     const exhausted=!q&&p.final_action==='CLARIFY'&&interactions.length>=MAX_CLARIFICATION_ROUNDS;

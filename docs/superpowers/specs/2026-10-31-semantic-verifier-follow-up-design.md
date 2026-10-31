@@ -11,6 +11,7 @@ Keep the semantic verifier responsible for checking whether proposed buyer facts
 - If a retry prerequisite is unsupported or uncertain, the harness never permits `STANDARD_REATTEMPT` from that assessment.
 - If only buyer-resolvable prerequisite facts are uncertain, another round is allowed, and contact remains appropriate, a dedicated VoltAgent question-generation call may produce one approved-topic question. The original assessment and verifier result remain unchanged and are separately recorded in history.
 - No question is generated for lifecycle, disruption, address change, direct refusal, or other operational facts. Without a suitable buyer question or remaining budget, final action is `ESCALATE_REVIEW`.
+- Relative schedule language is interpreted against the current assessment timestamp. The deterministic deadline precheck is rerun for assessments, buyer replies, manual retries, and no-reply finalization; an expired deadline cannot be restored by buyer intent.
 - Each generated question is bounded to 240 characters and counts toward the existing two-question total. It uses the existing three-assessment maximum; question generation is an additional model call and does not create an assessment turn.
 
 ## Persistence and audit

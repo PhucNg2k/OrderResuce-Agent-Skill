@@ -36,7 +36,7 @@ const verifierInstructions = `You are a narrow semantic verifier for a synthetic
 const verifierAgent = new Agent({name:'order-rescue-semantic-verifier',instructions:verifierInstructions,model:openai});
 export async function verifySemantics(input: CaseInput, proposed: unknown) {
   const started=Date.now(), model=process.env.OPENAI_MODEL||'gpt-6.1-terra', reasoningEffort=resolveReasoningEffort();
-  const relevant = {sources:input.sources, as_of:input.failed_event.as_of, deadline:input.deadline, buyer_messages_t0:input.operational_context.buyer_messages_t0, accepted_replies:input.conversation_context || [], required_fact_keys:input.operational_context.payment==='COD'?['intent','availability','cod_readiness','address','refusal']:['intent','availability','address','refusal'], proposed_decision_facts:proposed};
+  const relevant = {sources:input.sources, as_of:input.assessment_as_of||input.failed_event.as_of, deadline:input.deadline, buyer_messages_t0:input.operational_context.buyer_messages_t0, accepted_replies:input.conversation_context || [], required_fact_keys:input.operational_context.payment==='COD'?['intent','availability','cod_readiness','address','refusal']:['intent','availability','address','refusal'], proposed_decision_facts:proposed};
   const result=await verifierAgent.streamText(`Return JSON matching this schema: ${JSON.stringify(semanticVerificationSchema.toJSONSchema())}\nOriginal evidence and proposed facts: ${JSON.stringify(relevant)}`,{maxRetries:0,maxOutputTokens:2500,abortSignal:AbortSignal.timeout(Number(process.env.MODEL_TIMEOUT_MS||45000)),providerOptions:{openai:{reasoningEffort}}});
   let text='';for await(const delta of result.textStream)text+=delta;
   const usage=await result.usage,finishReason=await result.finishReason,metadata={model,reasoning_effort:reasoningEffort,latency_ms:Date.now()-started,usage,finish_reason:finishReason,version:'semantic-verifier-v2'};
@@ -63,7 +63,7 @@ export async function generateFollowupQuestion(input:CaseInput,unresolvedFacts:s
   const buyerFacts=new Set(['intent','availability','cod_readiness']);
   if(unresolvedFacts.length===0||unresolvedFacts.some(key=>!buyerFacts.has(key)))return null;
   const started=Date.now(),model=process.env.OPENAI_MODEL||'gpt-6.1-terra',reasoningEffort=resolveReasoningEffort();
-  const context={unresolved_facts:unresolvedFacts,deadline:input.deadline,as_of:input.failed_event.as_of,payment:input.operational_context.payment,sources:input.sources,conversation:input.conversation_context||[],buyer_messages_t0:input.operational_context.buyer_messages_t0};
+  const context={unresolved_facts:unresolvedFacts,deadline:input.deadline,as_of:input.assessment_as_of||input.failed_event.as_of,payment:input.operational_context.payment,sources:input.sources,conversation:input.conversation_context||[],buyer_messages_t0:input.operational_context.buyer_messages_t0};
   const result=await followupQuestionAgent.streamText(`Return JSON matching this schema: ${JSON.stringify(followupQuestionSchema.toJSONSchema())}\nFollow-up context: ${JSON.stringify(context)}`,{maxRetries:0,maxOutputTokens:500,abortSignal:AbortSignal.timeout(Number(process.env.MODEL_TIMEOUT_MS||45000)),providerOptions:{openai:{reasoningEffort}}});
   let text='';for await(const delta of result.textStream)text+=delta;
   const usage=await result.usage,finishReason=await result.finishReason,metadata={model,reasoning_effort:reasoningEffort,latency_ms:Date.now()-started,usage,finish_reason:finishReason,version:'semantic-followup-question-v1'};

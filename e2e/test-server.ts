@@ -4,6 +4,7 @@ import path from 'node:path';
 const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'order-rescue-e2e-'));
 process.env.DB_PATH = path.join(testDir, 'state.sqlite');
 process.env.NODE_ENV = 'test';
+process.env.ORDER_RESCUE_TEST_NOW = '2026-10-25T12:00:00.000Z';
 const { setAssessorForTests, setVerifierForTests, closeHarnessDatabase } = await import('../src/harness.js');
 const { shutdownAgentTelemetry } = await import('../src/agent.js');
 let failFirstRetryCase = true;
