@@ -3,7 +3,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { assessmentSchema, questionKeys, type CaseInput, type Assessment, type Policy, type ConversationTurn } from './domain.js';
-import { assess as liveAssess, envelopeSchema, generateFollowupQuestion as liveQuestionGenerator, verifySemantics as liveVerify } from './agent.js';
+import { envelopeSchema, generateFollowupQuestion as liveQuestionGenerator, verifySemantics as liveVerify } from './agent.js';
+import { assessWithDecisions as liveAssess } from './assessment-pipeline.js';
 
 const dbPath = process.env.DB_PATH || 'order-rescue.sqlite';
 if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });
@@ -17,7 +18,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS runs(
  error TEXT, events TEXT DEFAULT '[]', assessment_history TEXT NOT NULL DEFAULT '[]',
  interactions TEXT NOT NULL DEFAULT '[]', final_assessment_id TEXT, final_turn_index INTEGER,
  mode TEXT NOT NULL DEFAULT 'demo-multiturn-v1');
- CREATE TABLE IF NOT EXISTS events(event_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,event_type TEXT NOT NULL,payload_hash TEXT NOT NULL,result_json TEXT NOT NULL,created TEXT NOT NULL);`);
+ CREATE TABLE IF NOT EXISTS events(event_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,event_type TEXT NOT NULL,payload_hash TEXT NOT NULL,result_json TEXT NOT NULL,created TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS model_calls(call_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,record_json TEXT NOT NULL,created TEXT NOT NULL);`);
 // Existing prototype databases predate multi-turn bookkeeping. Additive migrations preserve their history.
 const columns = new Set((db.pragma('table_info(runs)') as { name: string }[]).map(x => x.name));
 for (const [name, declaration] of Object.entries({assessment_history:"TEXT NOT NULL DEFAULT '[]'",interactions:"TEXT NOT NULL DEFAULT '[]'",final_assessment_id:'TEXT',final_turn_index:'INTEGER',mode:"TEXT NOT NULL DEFAULT 'demo-multiturn-v1'"})) {
@@ -25,12 +27,12 @@ for (const [name, declaration] of Object.entries({assessment_history:"TEXT NOT N
 }
 db.exec('CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER NOT NULL)');
 const schemaVersion = db.prepare('select version from schema_meta limit 1').get() as { version: number } | undefined;
-if (schemaVersion && schemaVersion.version > 2) throw new Error(`Database schema ${schemaVersion.version} is newer than this app supports (2)`);
-if (!schemaVersion) db.prepare('insert into schema_meta(version) values(2)').run();
-else if (schemaVersion.version < 2) db.prepare('update schema_meta set version=2').run();
+  if (schemaVersion && schemaVersion.version > 3) throw new Error(`Database schema ${schemaVersion.version} is newer than this app supports (3)`);
+  if (!schemaVersion) db.prepare('insert into schema_meta(version) values(3)').run();
+else if (schemaVersion.version < 3) db.prepare('update schema_meta set version=3').run();
 const fixtures = JSON.parse(fs.readFileSync(new URL('../fixtures/synthetic/cases.json', import.meta.url), 'utf8')) as any[];
 export type TokenCallback = (delta: string) => void;
-export type Assessor = (input: CaseInput, onToken?: TokenCallback) => Promise<any>;
+export type Assessor = (input: CaseInput, onToken?: TokenCallback, onCall?:(record:any)=>void) => Promise<any>;
 let assessor: Assessor = liveAssess;
 export function setAssessorForTests(fn: Assessor) { assessor = fn; }
 type Verifier = (input: CaseInput, proposed: unknown) => Promise<any>;
@@ -52,6 +54,10 @@ function inputFor(c: any, interactions: ConversationTurn[] = [], active?: Conver
   if (c.buyer_context) {
     buyer.push({ source_ref: `${c.case_id}-BUYER-T0`, text: c.buyer_context });
     sources[`${c.case_id}-BUYER-T0`] = { text: c.buyer_context, verification: 'DIRECT_BUYER_STATEMENT', owner_case: c.case_id, available_phase: 'T0' };
+  }
+  if (c.ops) {
+    const verified = c.ops.verified === true && c.ops.status === 'ACTIVE' && c.ops.route_match === true && c.ops.time_match === true && c.ops.reassess_required === true;
+    sources[`${c.case_id}-OPS`] = { text: JSON.stringify(c.ops), verification: verified ? 'VERIFIED_OPS_SIGNAL' : 'UNVERIFIED_REPORT', owner_case: c.case_id, available_phase: 'T0' };
   }
   const runtime_context: { source_ref: string; text: string }[] = [];
   interactions.forEach((turn, i) => {
@@ -125,13 +131,16 @@ function parse(x: any) { return x && JSON.parse(x); }
 function view(r: any) {
   if (!r) return null;
   const events = db.prepare('select event_type,created from events where run_id=? order by created,event_id').all(r.id);
-  return { ...r, input: parse(r.input), phase2_input: parse(r.phase2_input), initial: parse(r.initial), initial_policy: parse(r.initial_policy), after_reply: parse(r.after_reply), after_policy: parse(r.after_policy), final: parse(r.final), final_policy: parse(r.final_policy), question: r.question, events, assessment_history: parse(r.assessment_history) || [], interactions: parse(r.interactions) || [], meta: parse(r.meta), precheck: parse(r.precheck) };
+  const model_calls=db.prepare('select record_json from model_calls where run_id=? order by created,call_id').all(r.id).map((x:any)=>parse(x.record_json));
+  return { ...r, input: parse(r.input), phase2_input: parse(r.phase2_input), initial: parse(r.initial), initial_policy: parse(r.initial_policy), after_reply: parse(r.after_reply), after_policy: parse(r.after_policy), final: parse(r.final), final_policy: parse(r.final_policy), question: r.question, events, assessment_history: parse(r.assessment_history) || [], interactions: parse(r.interactions) || [], model_calls, meta: parse(r.meta), precheck: parse(r.precheck) };
 }
 export const listCases = () => fixtures.map(({ case_id, title }) => ({ case_id, title, fixture_type: 'SYNTHETIC_DEVELOPMENT_ONLY' }));
 function recordFailure(runId: string, phase: string, error: unknown) {
   const current = rec(runId), meta = parse(current?.meta) || {};
   const callMeta = (error as any)?.callMeta;
   if (callMeta) meta.failed_call = callMeta;
+  const partialPipeline=(error as any)?.partialPipeline;
+  if(partialPipeline)meta.partial_pipeline=partialPipeline;
   meta.failure_phase = phase;
   meta.failure_class = error instanceof SyntaxError ? 'MALFORMED_JSON' : 'MODEL_OR_VALIDATION_ERROR';
   db.prepare("update runs set state='HUMAN_REVIEW',error=?,meta=? where id=? and state in ('ASSESSING','ASSESSING_REPLY','RETRYING')")
@@ -206,6 +215,7 @@ function selectedFinalPolicy(record: any, exhausted: boolean) {
   return exhausted ? { ...effective, policy_gate: 'ESCALATED', final_action: 'ESCALATE_REVIEW', reason: `Clarification budget exhausted; unresolved information: ${record.assessment.missing_info.join(', ') || 'buyer-resolvable details remain unclear'}.` } : effective;
 }
 function updateEventResult(eventId: string, payload: any, result: any) { db.prepare('update events set result_json=? where event_id=? and payload_hash=?').run(JSON.stringify(result), eventId, hash(payload)); }
+function journalCall(runId:string,record:any){db.prepare('insert into model_calls(call_id,run_id,record_json,created) values(?,?,?,?) on conflict(call_id) do update set record_json=excluded.record_json').run(record.call_id,runId,JSON.stringify(record),now().toISOString());}
 
 export async function start(caseId: string, onToken?: TokenCallback) {
   const c = fixtures.find(x => x.case_id === caseId); if (!c) throw Error('Unknown synthetic case');
@@ -213,7 +223,7 @@ export async function start(caseId: string, onToken?: TokenCallback) {
   db.prepare('insert into runs(id,case_id,state,input,input_hash,created,precheck) values(?,?,?,?,?,?,?)').run(id, caseId, check.state === 'READY' ? 'ASSESSING' : check.state, snap, ih, assessmentAsOf, JSON.stringify(check));
   if (check.state !== 'READY') return view(rec(id));
   try {
-    const raw = await assessor(inp, onToken), out = envelope(raw), a = assessmentSchema.parse(out.assessment); validateSources(inp, out);
+    const raw = await assessor(inp, onToken, record=>journalCall(id,record)), out = envelope(raw), a = assessmentSchema.parse(out.assessment); validateSources(inp, out);
     const assessedPolicy = policy(c, a, out.decision_facts, check), verified = await verifyRetry(inp, out.decision_facts, assessedPolicy), p = verified.policy, record = makeAssessmentRecord(id, 0, null, inp, raw, out, assessedPolicy);
     await prepareVerifierFollowup(inp,out,verified,record,[]);
     record.effective_policy = p; record.policy_override = p.final_action===assessedPolicy.final_action?null:{kind:verified.clarification_facts?.length&&p.final_action==='CLARIFY'?'SEMANTIC_VERIFIER_FOLLOWUP':'SEMANTIC_VERIFIER',from:assessedPolicy.final_action,to:p.final_action,reason:p.reason};
@@ -240,7 +250,7 @@ export async function reply(id: string, qid: string, text: string, eventId: stri
   const inp = inputFor(c, interactions, undefined, replyAt), ih = hash(inp), turnIndex = interactions.filter(t => t.reply_text).length;
   const reserved = db.transaction(() => { const cur=rec(id); if(cur.state!=='WAITING_FOR_BUYER'||cur.question_id!==qid) throw Error('Run changed before reply reservation'); db.prepare("update runs set state='ASSESSING_REPLY',interactions=?,reply=? where id=? and state='WAITING_FOR_BUYER'").run(JSON.stringify(interactions),text,id); })();
   try {
-    const raw = await assessor(inp, onToken), out = envelope(raw); validateSources(inp, out);
+    const raw = await assessor(inp, onToken, record=>journalCall(id,record)), out = envelope(raw); validateSources(inp, out);
     const assessedPolicy = policy(c, out.assessment, out.decision_facts, precheck(c, replyAt)), verified = await verifyRetry(inp, out.decision_facts, assessedPolicy), p = verified.policy;
     const history = (parse(r.assessment_history) || []) as any[], record = makeAssessmentRecord(id, turnIndex, eventId, inp, raw, out, assessedPolicy); await prepareVerifierFollowup(inp,out,verified,record,interactions); record.effective_policy=p; record.policy_override=p.final_action===assessedPolicy.final_action?null:{kind:verified.clarification_facts?.length&&p.final_action==='CLARIFY'?'SEMANTIC_VERIFIER_FOLLOWUP':'SEMANTIC_VERIFIER',from:assessedPolicy.final_action,to:p.final_action,reason:p.reason}; record.verification = verified.verification; history.push(record);
     const proposedQuestion = questionFrom(record, turnIndex + 1), q = interactions.length < MAX_CLARIFICATION_ROUNDS ? proposedQuestion : null, exhausted = !q && p.final_action === 'CLARIFY' && interactions.length >= MAX_CLARIFICATION_ROUNDS;
@@ -286,7 +296,7 @@ export async function retry(runId: string, attemptId: string, onToken?: TokenCal
     db.prepare("update runs set state='RETRYING',error=NULL,meta=json_set(coalesce(meta,'{}'),'$.retry_attempts',coalesce(json_extract(meta,'$.retry_attempts'),0)+1) where id=? and state='HUMAN_REVIEW'").run(runId);
   })();
   try {
-    const raw=await assessor(inp,onToken), out=envelope(raw); validateSources(inp,out);
+    const raw=await assessor(inp,onToken,record=>journalCall(runId,record)), out=envelope(raw); validateSources(inp,out);
     const turnIndex=interactions.length, history=(parse(run.assessment_history)||[]) as any[];
     const checked=policy(c,out.assessment,out.decision_facts,precheck(c,retryAt)), verified=await verifyRetry(inp,out.decision_facts,checked), p=verified.policy;
     const record=makeAssessmentRecord(runId,turnIndex,attemptId,inp,raw,out,checked); await prepareVerifierFollowup(inp,out,verified,record,interactions); record.effective_policy=p; record.policy_override=p.final_action===checked.final_action?null:{kind:verified.clarification_facts?.length&&p.final_action==='CLARIFY'?'SEMANTIC_VERIFIER_FOLLOWUP':'SEMANTIC_VERIFIER',from:checked.final_action,to:p.final_action,reason:p.reason}; record.verification=verified.verification; history.push(record);
